@@ -123,77 +123,33 @@ class DockerService:
         volumes: Optional[Dict] = None,
         command: Optional[str] = None
     ) -> Dict[str, Any]:
-        """创建并启动 OpenClaw 容器（从基础容器克隆）"""
+        """创建并启动 OpenClaw 容器"""
         try:
             # 端口映射: 宿主机 host_port -> 容器 18789
             ports = {
                 f"{settings.GATEWAY_INTERNAL_PORT}/tcp": ("0.0.0.0", host_port)
             }
             
-            # 尝试从基础容器克隆
-            base_container_name = settings.BASE_CONTAINER_NAME
-            try:
-                base_container = self.client.containers.get(base_container_name)
-                
-                # 提交基础容器为新镜像
-                base_image_name = f"{base_container_name}:latest"
-                base_container.commit(repository=base_container_name, tag="latest")
-                
-                # 使用克隆的镜像创建容器
-                new_image = self.client.images.get(base_image_name)
-                container = self.client.containers.run(
-                    image=new_image.id,
-                    name=name,
-                    ports=ports,
-                    environment=environment or {},
-                    volumes=volumes or {},
-                    command=None,  # Use default entrypoint/cmd from image'.
-                    detach=True,
-                    restart_policy={"Name": "unless-stopped"}
-                )
-                
-                return {
-                    "success": True,
-                    "container_id": container.id,
-                    "name": container.name,
-                    "status": container.status,
-                    "cloned": True,
-                    "base_image": base_image_name
-                }
-            except NotFound:
-                return {
-                    "success": False,
-                    "error": f"基础容器 '{base_container_name}' 不存在，无法克隆"
-                }
-            except APIError as e:
-                return {"success": False, "error": f"Docker API 错误: {str(e)}"}
-            except Exception as e:
-                # 克隆失败，使用原始镜像创建
-                try:
-                    self.client.images.get(image)
-                except NotFound:
-                    pass
-                
-                container = self.client.containers.run(
-                    image=image,
-                    name=name,
-                    ports=ports,
-                    environment=environment or {},
-                    volumes=volumes or {},
-                    command=None,  # Use default entrypoint/cmd from image'.
-                    detach=True,
-                    restart_policy={"Name": "unless-stopped"}
-                )
-                
-                return {
-                    "success": True,
-                    "container_id": container.id,
-                    "name": container.name,
-                    "status": container.status,
-                    "cloned": False
-                }
+            container = self.client.containers.run(
+                image=image,
+                name=name,
+                ports=ports,
+                environment=environment or {},
+                volumes=volumes or {},
+                command=None,
+                detach=True,
+                restart_policy={"Name": "unless-stopped"}
+            )
+            
+            return {
+                "success": True,
+                "container_id": container.id,
+                "name": container.name,
+                "status": container.status,
+                "image": image
+            }
         except NotFound:
-            return {"success": False, "error": f"基础容器 '{settings.BASE_CONTAINER_NAME}' 不存在，无法克隆"}
+            return {"success": False, "error": f"镜像不存在: {image}"}
         except APIError as e:
             return {"success": False, "error": f"Docker API 错误: {str(e)}"}
         except Exception as e:
