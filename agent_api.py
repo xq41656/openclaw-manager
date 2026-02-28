@@ -694,6 +694,30 @@ def restart_agent(agent_id: str, db: Session = Depends(get_db)):
     else:
         raise HTTPException(status_code=500, detail=result.get("error"))
 
+@router.post("/instances/{agent_id}/start-claw")
+def start_claw(agent_id: str, db: Session = Depends(get_db)):
+    """启动 Claw（执行 entrypoint 脚本）"""
+    agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="容器尚未创建")
+    
+    oc_service = OpenClawService()
+    entrypoint_result = oc_service.docker.run_entrypoint(agent.container_id)
+    
+    audit = AuditService(db)
+    audit.log(
+        action="start_claw",
+        entity_type="agent",
+        entity_id=agent_id,
+        description=f"启动 Claw: {agent.name}",
+        agent_id=agent_id,
+        extra_data={"entrypoint_result": entrypoint_result}
+    )
+    
+    return {"success": entrypoint_result.get("success", False), "message": f"Claw 启动完成", "result": entrypoint_result}
+
 @router.get("/instances/{agent_id}/logs")
 def get_agent_logs(agent_id: str, tail: int = 200, db: Session = Depends(get_db)):
     """获取智能体容器日志"""
