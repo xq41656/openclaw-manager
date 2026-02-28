@@ -314,3 +314,18 @@ class DockerService:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
+    
+    def copy_file_to_container(self, container_id: str, src_path: str, dest_path: str) -> Dict[str, Any]:
+        """将文件复制到容器"""
+        try:
+            container = self.client.containers.get(container_id)
+            with open(src_path, 'rb') as f:
+                container.put_archive('/tmp', f.read())
+            result = container.exec_run(f"cp /tmp/{src_path.split('/')[-1]} {dest_path}", stdout=True, stderr=True)
+            return {
+                "success": result.exit_code == 0,
+                "exit_code": result.exit_code,
+                "output": result.output.decode('utf-8') if result.output else ""
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}

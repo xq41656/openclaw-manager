@@ -704,6 +704,18 @@ def start_claw(agent_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="容器尚未创建")
     
     oc_service = OpenClawService()
+    
+    # 复制配置文件到容器
+    config_copy_result = oc_service.docker.copy_file_to_container(
+        agent.container_id,
+        "/root/.openclaw/workspace/openclaw-manager/openclaw.json",
+        "/root/.openclaw/openclaw.json"
+    )
+    
+    if not config_copy_result.get("success"):
+        return {"success": False, "message": f"配置文件复制失败: {config_copy_result.get('error', '未知错误')}", "result": config_copy_result}
+    
+    # 执行 entrypoint 脚本
     entrypoint_result = oc_service.docker.run_entrypoint(agent.container_id)
     
     audit = AuditService(db)
