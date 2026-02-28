@@ -212,12 +212,14 @@ class DockerService:
             return f"获取日志失败: {str(e)}"
     
     def get_container_status(self, container_id: str) -> Dict[str, Any]:
-        """获取容器状态"""
+        """获取容器状态（支持 12 位或 64 位 ID）"""
         try:
+            # Docker 支持使用 12 位或 64 位 ID
             container = self.client.containers.get(container_id)
             return {
                 "exists": True,
-                "id": container.id[:12],
+                "id": container.id,  # 完整 64 位 ID
+                "id_short": container.id[:12],  # 12 位缩写
                 "name": container.name,
                 "status": container.status,
                 "state": container.attrs.get("State", {}),
@@ -229,12 +231,13 @@ class DockerService:
             return {"exists": False, "error": str(e)}
     
     def list_all_containers(self) -> List[Dict[str, Any]]:
-        """列出所有容器"""
+        """列出所有容器（返回完整 64 位 ID）"""
         containers = self.client.containers.list(all=True)
         result = []
         for c in containers:
             result.append({
-                "id": c.id[:12],
+                "id": c.id,  # 返回完整 64 位 ID
+                "id_short": c.id[:12],  # 12 位缩写 ID 用于显示
                 "name": c.name,
                 "image": c.image.tags[0] if c.image.tags else c.image.id[:12],
                 "status": c.status,
@@ -243,6 +246,26 @@ class DockerService:
                 "created": c.attrs.get("Created", "")
             })
         return result
+    
+    def get_container_by_id(self, container_id: str) -> Optional[Dict[str, Any]]:
+        """根据 ID（支持 12 位或 64 位）获取容器信息"""
+        try:
+            # Docker 支持使用 12 位或 64 位 ID
+            container = self.client.containers.get(container_id)
+            return {
+                "id": container.id,  # 完整 64 位
+                "id_short": container.id[:12],  # 12 位缩写
+                "name": container.name,
+                "image": container.image.tags[0] if container.image.tags else container.image.id[:12],
+                "status": container.status,
+                "state": container.attrs.get("State", {}),
+                "ports": container.ports,
+                "exists": True
+            }
+        except NotFound:
+            return {"exists": False}
+        except Exception as e:
+            return {"exists": False, "error": str(e)}
     
     def commit_container(self, container_id: str, repository: str, tag: str) -> Dict[str, Any]:
         """提交容器为镜像（备份）"""

@@ -18,6 +18,120 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 docker_service = DockerService()
 
 
+# ============ 容器 API ============
+
+@router.get("/containers")
+def list_containers(db: Session = Depends(get_db)):
+    """列出所有容器"""
+    containers = docker_service.list_all_containers()
+    return containers
+
+
+@router.get("/containers/{container_id}")
+def get_container(container_id: str, db: Session = Depends(get_db)):
+    """获取单个容器详情（支持 12 位或 64 位 ID）"""
+    container = docker_service.get_container_by_id(container_id)
+    return container
+
+
+@router.post("/containers/{container_id}/start")
+def start_container(container_id: str, db: Session = Depends(get_db)):
+    """启动容器"""
+    result = docker_service.start_container(container_id)
+    if result["success"]:
+        # 记录审计日志
+        audit = AuditService(db)
+        # 获取 agent_id 用于审计日志关联
+        agent = db.query(AgentInstance).filter(AgentInstance.container_id == container_id).first()
+        agent_id = agent.id if agent else None
+        
+        audit.log(
+            action="start",
+            entity_type="container",
+            entity_id=container_id,
+            description=f"启动容器: {result.get('status', 'unknown')}",
+            agent_id=agent_id
+        )
+        
+        return {"success": True, "message": "容器已启动", "status": result.get("status")}
+    else:
+        raise HTTPException(status_code=400, detail=result.get("error", "启动失败"))
+
+
+@router.post("/containers/{container_id}/stop")
+def stop_container(container_id: str, db: Session = Depends(get_db)):
+    """停止容器"""
+    result = docker_service.stop_container(container_id)
+    if result["success"]:
+        # 记录审计日志
+        audit = AuditService(db)
+        # 获取 agent_id 用于审计日志关联
+        agent = db.query(AgentInstance).filter(AgentInstance.container_id == container_id).first()
+        agent_id = agent.id if agent else None
+        
+        audit.log(
+            action="stop",
+            entity_type="container",
+            entity_id=container_id,
+            description="停止容器",
+            agent_id=agent_id
+        )
+        
+        return {"success": True, "message": "容器已停止"}
+    else:
+        raise HTTPException(status_code=400, detail=result.get("error", "停止失败"))
+
+
+@router.post("/containers/{container_id}/restart")
+def restart_container(container_id: str, db: Session = Depends(get_db)):
+    """重启容器"""
+    result = docker_service.restart_container(container_id)
+    if result["success"]:
+        # 记录审计日志
+        audit = AuditService(db)
+        # 获取 agent_id 用于审计日志关联
+        agent = db.query(AgentInstance).filter(AgentInstance.container_id == container_id).first()
+        agent_id = agent.id if agent else None
+        
+        audit.log(
+            action="restart",
+            entity_type="container",
+            entity_id=container_id,
+            description=f"重启容器: {result.get('status', 'unknown')}",
+            agent_id=agent_id
+        )
+        
+        return {"success": True, "message": "容器已重启", "status": result.get("status")}
+    else:
+        raise HTTPException(status_code=400, detail=result.get("error", "重启失败"))
+
+
+@router.get("/containers/{container_id}/logs")
+def get_container_logs(container_id: str, tail: int = 200, db: Session = Depends(get_db)):
+    """获取容器日志"""
+    logs = docker_service.get_container_logs(container_id, tail=tail)
+    return {"container_id": container_id, "logs": logs}
+
+
+@router.get("/containers/{container_id}/inspect")
+def inspect_container(container_id: str, db: Session = Depends(get_db)):
+    """获取容器详细信息 (inspect)"""
+    try:
+        container = docker_service.client.containers.get(container_id)
+        info = container.attrs
+        return {
+            "id": container.id,
+            "name": container.name,
+            "image": container.image.tags[0] if container.image.tags else container.image.id[:12],
+            "status": container.status,
+            "info": info
+        }
+    except NotFound:
+        raise HTTPException(status_code=404, detail="容器不存在")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============ Pydantic 模型 ============
 
 class TemplateCreate(BaseModel):
@@ -632,6 +746,9 @@ def update_agent_config(agent_id: str, config: AgentConfigUpdate, db: Session = 
     if not agent:
         raise HTTPException(status_code=404, detail="智能体不存在")
     
+    # 保存旧配置用于审计
+    old_config = agent.config
+    
     # 生成新配置
     oc_service = OpenClawService()
     new_config = oc_service.generate_config(
@@ -641,9 +758,6 @@ def update_agent_config(agent_id: str, config: AgentConfigUpdate, db: Session = 
         gateway_password=config.gateway_password,
         **(config.extra_config or {})
     )
-    
-    # 保存旧配置用于审计
-    old_config = agent.config
     
     # 应用配置
     if agent.container_id:

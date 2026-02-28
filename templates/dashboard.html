@@ -170,6 +170,40 @@
         </div>
     </div>
 
+    <!-- 容器操作弹窗 -->
+    <div class="modal" id="container-ops-modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header"><h3>容器操作</h3><button class="action-btn" onclick="closeModal('container-ops-modal')">✕</button></div>
+            <div class="modal-body">
+                <div class="info-item" style="margin-bottom:16px;">
+                    <div class="info-label">容器名称</div>
+                    <div class="info-value" id="container-ops-name">-</div>
+                </div>
+                <div class="info-item" style="margin-bottom:16px;">
+                    <div class="info-label">容器状态</div>
+                    <div class="info-value" id="container-ops-status">-</div>
+                </div>
+                <div class="info-item" style="margin-bottom:16px;">
+                    <div class="info-label">镜像</div>
+                    <div class="info-value" id="container-ops-image">-</div>
+                </div>
+                <div class="info-item" style="margin-bottom:16px;">
+                    <div class="info-label">完整容器ID</div>
+                    <div class="info-value container-id" id="container-ops-full-id" style="font-size:10px;">-</div>
+                </div>
+                <div class="form-group" style="margin-top:20px;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="action-btn success" onclick="containerOpStart()">▶️ 启动</button>
+                        <button class="action-btn warning" onclick="containerOpStop()">⏹️ 停止</button>
+                        <button class="action-btn" onclick="containerOpRestart()">🔄 重启</button>
+                        <button class="action-btn" onclick="containerOpLogs()">📄 日志</button>
+                        <button class="action-btn" onclick="containerOpInspect()">📋 详细信息</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 编辑模板弹窗 -->
     <div class="modal" id="edit-template-modal">
         <div class="modal-content">
@@ -244,7 +278,7 @@
         let templatesData=[];
         let agentsData=[];
         
-        function switchTab(t){document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.content-section').forEach(x=>x.classList.remove('active'));event.target.classList.add('active');document.getElementById('tab-'+t).classList.add('active');if(t==='templates')loadTemplates();if(t==='projects')loadProjects();}
+        function switchTab(t){document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.content-section').forEach(x=>x.classList.remove('active'));event.target.classList.add('active');document.getElementById('tab-'+t).classList.add('active');if(t==='templates')loadTemplates();if(t==='projects')loadProjects();if(t==='overview')loadContainers();}
         function toggle(id){document.getElementById(id).classList.toggle('hidden');}
         function closeModal(id){document.getElementById(id).classList.remove('active');}
         function openUI(port){window.open(`http://${window.location.hostname}:${port}`,'_blank');}
@@ -253,7 +287,7 @@
         function getStatusText(s){const m={running:'运行中',stopped:'已停止',creating:'创建中',error:'错误'};return m[s]||s;}
         function formatPorts(p){if(!p||Object.keys(p).length===0)return'-';return Object.entries(p).map(([k,v])=>Array.isArray(v)?v.map(h=>`${h.HostPort}:${k.split('/')[0]}`).join(','):`${k}>${v}`).join(', ');}
         
-        async function loadContainers(){try{const c=await fetch(`${API_BASE}/api/containers/all`).then(r=>r.json());const tb=document.getElementById('containers-tbody');tb.innerHTML=c.length===0?'<tr><td colspan="5" class="empty-state">暂无容器</td></tr>':c.map(x=>`<tr><td class="container-id">${x.id}</td><td>${x.name}</td><td class="image-tag">${x.image}</td><td><span class="status ${getStatusClass(x.state)}"><span class="status-dot"></span>${getStatusText(x.state)}</span></td><td>${formatPorts(x.ports)}</td></tr>`).join('');}catch(e){console.error(e);}}
+        async function loadContainers(){try{const c=await fetch(`${API_BASE}/api/containers/all`).then(r=>r.json());const tb=document.getElementById('containers-tbody');tb.innerHTML=c.length===0?'<tr><td colspan="5" class="empty-state">暂无容器</td></tr>':c.map(x=>`<tr><td class="container-id" title="${x.id}">${x.id_short}</td><td>${x.name}</td><td class="image-tag">${x.image}</td><td><span class="status ${getStatusClass(x.state)}"><span class="status-dot"></span>${getStatusText(x.state)}</span></td><td>${formatPorts(x.ports)}</td></tr>`).join('');}catch(e){console.error(e);}}
         
         // 加载模板 - 每个模板就是一个实例
         async function loadTemplates() {
@@ -289,6 +323,7 @@
                 ${agent.status === 'running' ? `<button class="action-btn warning" onclick="showConfig('${agent.id}')">⚙️ 配置</button>` : ''}
                 ${agent.status === 'running' ? `<button class="action-btn" onclick="stopAgent('${agent.id}')">⏹️ 停止</button>` : (agent.status === 'stopped' || agent.status === 'error') ? `<button class="action-btn success" onclick="startAgent('${agent.id}')">▶️ 启动</button>` : `<button class="action-btn" disabled>⏳ 等待中</button>`}
                 ${agent.status !== 'creating' && agent.container_id ? `<button class="action-btn" onclick="viewLogs('${agent.id}')">📄 日志</button>` : ''}
+                <button class="action-btn" onclick="showContainerOps('${agent.container_id}')">📦 容器操作</button>
             </div>` : '<div class="empty-state" style="padding:20px">该模板尚未创建实例</div>'}
         </div>`;
                 }).join('');
@@ -356,6 +391,130 @@
             loadLogs();
         }
         
+        // 显示容器操作弹窗
+        let currentContainerId = null;
+        function showContainerOps(containerId) {
+            if (!containerId) {
+                alert('容器尚未创建');
+                return;
+            }
+            currentContainerId = containerId;
+            document.getElementById('container-ops-modal').classList.add('active');
+            loadContainerOpsInfo();
+        }
+        
+        async function loadContainerOpsInfo() {
+            if (!currentContainerId) return;
+            
+            try {
+                const result = await fetch(`${API_BASE}/api/containers/${currentContainerId}`).then(r => r.json());
+                if (result.exists) {
+                    document.getElementById('container-ops-name').textContent = result.name || '-';
+                    document.getElementById('container-ops-status').textContent = result.status || '-';
+                    document.getElementById('container-ops-image').textContent = result.image || '-';
+                    document.getElementById('container-ops-full-id').textContent = result.id || '-';
+                    document.getElementById('container-ops-full-id').title = result.id || '';
+                } else {
+                    document.getElementById('container-ops-name').textContent = '容器不存在';
+                    document.getElementById('container-ops-status').textContent = '-';
+                    document.getElementById('container-ops-image').textContent = '-';
+                    document.getElementById('container-ops-full-id').textContent = '-';
+                }
+            } catch(e) {
+                console.error('加载容器信息失败:', e);
+            }
+        }
+        
+        async function containerOpStart() {
+            if (!currentContainerId) return;
+            try {
+                const result = await fetch(`${API_BASE}/api/containers/${currentContainerId}/start`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                }).then(r => r.json());
+                
+                if (result.success) {
+                    alert('容器已启动');
+                    loadContainerOpsInfo();
+                    loadTemplates();
+                } else {
+                    alert('启动失败: ' + (result.error || '未知错误'));
+                }
+            } catch(e) {
+                alert('操作失败: ' + e.message);
+            }
+        }
+        
+        async function containerOpStop() {
+            if (!currentContainerId) return;
+            try {
+                const result = await fetch(`${API_BASE}/api/containers/${currentContainerId}/stop`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                }).then(r => r.json());
+                
+                if (result.success) {
+                    alert('容器已停止');
+                    loadContainerOpsInfo();
+                    loadTemplates();
+                } else {
+                    alert('停止失败: ' + (result.error || '未知错误'));
+                }
+            } catch(e) {
+                alert('操作失败: ' + e.message);
+            }
+        }
+        
+        async function containerOpRestart() {
+            if (!currentContainerId) return;
+            try {
+                const result = await fetch(`${API_BASE}/api/containers/${currentContainerId}/restart`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                }).then(r => r.json());
+                
+                if (result.success) {
+                    alert('容器已重启');
+                    loadContainerOpsInfo();
+                    loadTemplates();
+                } else {
+                    alert('重启失败: ' + (result.error || '未知错误'));
+                }
+            } catch(e) {
+                alert('操作失败: ' + e.message);
+            }
+        }
+        
+        async function containerOpLogs() {
+            if (!currentContainerId) return;
+            currentLogAgentId = null; // 设置为 null 表示查看容器日志
+            currentLogTab = 'container';
+            document.getElementById('logs-modal').classList.add('active');
+            document.getElementById('logs-title').textContent = '容器日志 (操作日志)';
+            
+            try {
+                const result = await fetch(`${API_BASE}/api/containers/${currentContainerId}/logs?tail=100`).then(r => r.json());
+                document.getElementById('logs-content').textContent = result.logs || '无日志';
+            } catch(e) {
+                document.getElementById('logs-content').textContent = '获取日志失败: ' + e.message;
+            }
+        }
+        
+        async function containerOpInspect() {
+            if (!currentContainerId) return;
+            currentLogAgentId = null;
+            currentLogTab = 'creation';
+            document.getElementById('logs-modal').classList.add('active');
+            document.getElementById('logs-title').textContent = '容器详细信息 (Inspect)';
+            
+            try {
+                const result = await fetch(`${API_BASE}/api/containers/${currentContainerId}/inspect`).then(r => r.json());
+                document.getElementById('logs-content').textContent = JSON.stringify(result, null, 2);
+            } catch(e) {
+                document.getElementById('logs-content').textContent = '获取信息失败: ' + e.message;
+            }
+        }
+        
         async function loadLogs() {
             if (!currentLogAgentId) return;
             
@@ -412,13 +571,33 @@
             resultEl.style.color = '#8b949e';
             
             try {
-                const containers = await fetch(`${API_BASE}/api/containers/all`).then(r => r.json());
-                const container = containers.find(c => c.id === containerId || c.id.startsWith(containerId));
+                // 支持 12 位或 64 位 ID
+                let checkedId = containerId;
+                if (containerId.length === 12) {
+                    // 12 位 ID，需要转换为完整 64 位
+                    const containers = await fetch(`${API_BASE}/api/containers/all`).then(r => r.json());
+                    const container = containers.find(c => c.id_short === containerId || c.id === containerId);
+                    
+                    if (container && container.id) {
+                        checkedId = container.id; // 使用完整 64 位 ID
+                    } else if (container) {
+                        // container 对象就是结果
+                        resultEl.textContent = `✅ 容器存在: ${container.name} (${container.status})`;
+                        resultEl.style.color = '#3fb950';
+                        document.getElementById('edit-container-id').value = container.id; // 更新为完整 ID
+                        document.getElementById('edit-container-id').dataset.fullId = container.id;
+                        return;
+                    }
+                }
                 
-                if (container) {
-                    resultEl.textContent = `✅ 容器存在: ${container.name} (${container.state})`;
+                // 获取完整容器信息
+                const containerInfo = await fetch(`${API_BASE}/api/containers/${checkedId}`).then(r => r.json());
+                
+                if (containerInfo.exists) {
+                    resultEl.textContent = `✅ 容器存在: ${containerInfo.name} (${containerInfo.status})`;
                     resultEl.style.color = '#3fb950';
-                    document.getElementById('edit-container-id').dataset.fullId = container.id;
+                    document.getElementById('edit-container-id').value = containerInfo.id; // 更新为完整 ID
+                    document.getElementById('edit-container-id').dataset.fullId = containerInfo.id;
                 } else {
                     resultEl.textContent = '❌ 容器不存在，请检查ID是否正确';
                     resultEl.style.color = '#f85149';
@@ -442,17 +621,17 @@
                 // 1. 先检查容器（如果有填写容器ID）
                 let containerUpdateData = null;
                 if (agentId && containerId) {
-                    const containers = await fetch(`${API_BASE}/api/containers/all`).then(r => r.json());
-                    const container = containers.find(c => c.id === containerId || c.id.startsWith(containerId));
+                    // 检查容器是否存在（支持 12 位或 64 位 ID）
+                    const containerInfo = await fetch(`${API_BASE}/api/containers/${containerId}`).then(r => r.json());
                     
-                    if (!container) {
+                    if (!containerInfo.exists) {
                         alert('❌ 保存失败：指定的容器ID不存在，请检查后再试');
                         return; // 容器不存在，保存失败
                     }
                     
                     let hostPort = null;
-                    if (container.ports) {
-                        for (const [key, bindings] of Object.entries(container.ports)) {
+                    if (containerInfo.ports) {
+                        for (const [key, bindings] of Object.entries(containerInfo.ports)) {
                             if (Array.isArray(bindings) && bindings.length > 0) {
                                 hostPort = parseInt(bindings[0].HostPort);
                                 break;
@@ -461,8 +640,8 @@
                     }
                     
                     containerUpdateData = {
-                        container_id: container.id,
-                        container_name: container.name,
+                        container_id: containerInfo.id, // 使用完整 64 位 ID
+                        container_name: containerInfo.name,
                         host_port: hostPort
                     };
                 }
@@ -617,7 +796,7 @@
             } catch(e) { alert('创建失败: ' + e.message); }
         }
         async function cloneTemplateToProject(projectId){const templates=await fetch(`${API_BASE}/api/agents/templates`).then(r=>r.json());if(templates.length===0){alert('没有可用的模板');return;}const tid=prompt('输入要克隆的模板ID:\n'+templates.map(t=>`${t.id.slice(0,8)} - ${t.name}`).join('\n'));if(!tid)return;await fetch(`${API_BASE}/api/projects/${projectId}/clone-template`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template_id:tid})});loadProjects();}
-        function loadAll(){loadContainers();}
+        function loadAll(){loadContainers();loadTemplates();loadProjects();}
         setInterval(loadAll,30000);
         loadAll();
     </script>
