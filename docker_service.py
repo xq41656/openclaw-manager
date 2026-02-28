@@ -118,39 +118,77 @@ class DockerService:
         volumes: Optional[Dict] = None,
         command: Optional[str] = None
     ) -> Dict[str, Any]:
-        """创建并启动 OpenClaw 容器"""
+        """创建并启动 OpenClaw 容器（从基础容器克隆）"""
         try:
             # 端口映射: 宿主机 host_port -> 容器 18789
             ports = {
                 f"{settings.GATEWAY_INTERNAL_PORT}/tcp": ("0.0.0.0", host_port)
             }
             
-            # 先检查镜像是否存在
+            # 尝试从基础容器克隆
+            base_container_name = settings.BASE_CONTAINER_NAME
             try:
-                self.client.images.get(image)
+                base_container = self.client.containers.get(base_container_name)
+                
+                # 提交基础容器为新镜像
+                base_image_name = f"{base_container_name}:latest"
+                base_container.commit(repository=base_container_name, tag="latest")
+                
+                # 使用克隆的镜像创建容器
+                new_image = self.client.images.get(base_image_name)
+                container = self.client.containers.run(
+                    image=new_image.id,
+                    name=name,
+                    ports=ports,
+                    environment=environment or {},
+                    volumes=volumes or {},
+                    command=command,
+                    detach=True,
+                    restart_policy={"Name": "unless-stopped"}
+                )
+                
+                return {
+                    "success": True,
+                    "container_id": container.id,
+                    "name": container.name,
+                    "status": container.status,
+                    "cloned": True,
+                    "base_image": base_image_name
+                }
             except NotFound:
-                # 镜像不存在，尝试拉取
-                pass
-            
-            container = self.client.containers.run(
-                image=image,
-                name=name,
-                ports=ports,
-                environment=environment or {},
-                volumes=volumes or {},
-                command=command,
-                detach=True,
-                restart_policy={"Name": "unless-stopped"}
-            )
-            
-            return {
-                "success": True,
-                "container_id": container.id,
-                "name": container.name,
-                "status": container.status
-            }
-        except NotFound as e:
-            return {"success": False, "error": f"镜像不存在: {str(e)}"}
+                return {
+                    "success": False,
+                    "error": f"基础容器 '{base_container_name}' 不存在，无法克隆"
+                }
+            except APIError as e:
+                return {"success": False, "error": f"Docker API 错误: {str(e)}"}
+            except Exception as e:
+                # 克隆失败，使用原始镜像创建
+                try:
+                    self.client.images.get(image)
+                except NotFound:
+                    pass
+                
+                container = self.client.containers.run(
+                    image=image,
+                    name=name,
+                    ports=ports,
+                    environment=environment or {},
+                    volumes=volumes or {},
+                    command=command,
+                    detach=True,
+                    restart_policy={"Name": "unless-stopped"}
+                )
+                
+                return {
+                    "success": True,
+                    "container_id": container.id,
+                    "name": container.name,
+                    "status": container.status,
+                    "cloned": False
+                }
+        except NotFound:
+            return {"success": False, "error": f"基础容器 '{settings.BASE_CONTAINER_NAME}' 不存在，无法克隆"}
         except APIError as e:
             return {"success": False, "error": f"Docker API 错误: {str(e)}"}
         except Exception as e:
@@ -212,14 +250,12 @@ class DockerService:
             return f"获取日志失败: {str(e)}"
     
     def get_container_status(self, container_id: str) -> Dict[str, Any]:
-        """获取容器状态（支持 12 位或 64 位 ID）"""
+        """获取容器状态（Docker 支持 12 位或 64 位 ID）"""
         try:
-            # Docker 支持使用 12 位或 64 位 ID
             container = self.client.containers.get(container_id)
             return {
                 "exists": True,
-                "id": container.id,  # 完整 64 位 ID
-                "id_short": container.id[:12],  # 12 位缩写
+                "id": container.id,  # 统一使用完整 64 位 ID
                 "name": container.name,
                 "status": container.status,
                 "state": container.attrs.get("State", {}),
@@ -236,8 +272,7 @@ class DockerService:
         result = []
         for c in containers:
             result.append({
-                "id": c.id,  # 返回完整 64 位 ID
-                "id_short": c.id[:12],  # 12 位缩写 ID 用于显示
+                "id": c.id,  # 统一使用完整 64 位 ID
                 "name": c.name,
                 "image": c.image.tags[0] if c.image.tags else c.image.id[:12],
                 "status": c.status,
@@ -248,13 +283,11 @@ class DockerService:
         return result
     
     def get_container_by_id(self, container_id: str) -> Optional[Dict[str, Any]]:
-        """根据 ID（支持 12 位或 64 位）获取容器信息"""
+        """根据 ID 获取容器信息（Docker 支持 12 位或 64 位 ID）"""
         try:
-            # Docker 支持使用 12 位或 64 位 ID
             container = self.client.containers.get(container_id)
             return {
-                "id": container.id,  # 完整 64 位
-                "id_short": container.id[:12],  # 12 位缩写
+                "id": container.id,  # 完整 64 位 ID
                 "name": container.name,
                 "image": container.image.tags[0] if container.image.tags else container.image.id[:12],
                 "status": container.status,

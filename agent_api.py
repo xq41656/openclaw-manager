@@ -2,11 +2,14 @@
 智能体 API - 模板 + 实例生命周期
 """
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import Column
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 import uuid
+from docker_service import NotFound
 
 from database import get_db, Template, AgentInstance, PortAllocation
 from docker_service import DockerService, PortPoolManager
@@ -235,7 +238,7 @@ def create_template(template: TemplateCreate, background_tasks: BackgroundTasks,
     
     # 3. 创建智能体实例（关联到模板）
     agent_id = str(uuid.uuid4())
-    container_name = f"openclaw-agent-{agent_id[:8]}"
+    container_name = f"M-{template.id[:8]}"  # M-模板id
     
     db_agent = AgentInstance(
         id=agent_id,
@@ -881,3 +884,27 @@ def backup_agent(agent_id: str, tag: Optional[str] = None, db: Session = Depends
         }
     else:
         raise HTTPException(status_code=500, detail=result.get("error"))
+
+
+@router.get("/instances/{agent_id}/config-logs")
+def get_config_logs(agent_id: str, db: Session = Depends(get_db)):
+    """获取智能体配置变更日志"""
+    agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    
+    logs = db.query(AuditLog).filter(
+        AuditLog.agent_id == agent_id,
+        AuditLog.action == "config_change"
+    ).order_by(AuditLog.created_at.desc()).all()
+    
+    return {
+        "logs": [{
+            "id": log.id,
+            "action": log.action,
+            "description": log.description,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "created_at": log.created_at.isoformat()
+        } for log in logs]
+    }

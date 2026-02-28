@@ -60,7 +60,7 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks, db
         raise HTTPException(status_code=500, detail="端口池已耗尽")
     
     main_agent_id = str(uuid.uuid4())
-    main_container_name = f"openclaw-main-{main_agent_id[:8]}"
+    main_container_name = f"X-main-{project_id[:8]}"  # X-main-项目ID
     
     # 获取主智能体模板
     main_image = "openclaw/openclaw:latest"
@@ -99,7 +99,7 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks, db
             break  # 端口不足，停止创建
         
         agent_id = str(uuid.uuid4())
-        container_name = f"openclaw-agent-{agent_id[:8]}"
+        container_name = f"X-z-{project_id[:8]}-M{template_id[:8]}"  # X-z-项目ID-M克隆的模板ID
         
         # 获取模板
         agent_image = "openclaw/openclaw:latest"
@@ -403,7 +403,7 @@ def clone_template_to_project(
     
     # 创建实例
     agent_id = str(uuid.uuid4())
-    container_name = f"openclaw-{project.name}-{agent_id[:8]}"
+    container_name = f"X-z-{project_id[:8]}-M{req.template_id[:8]}"  # X-z-项目ID-M克隆的模板ID
     config = template.default_config or {}
     
     # 应用项目级配置

@@ -29,7 +29,8 @@ app.include_router(agent_router)
 app.include_router(project_router)
 
 # 静态文件和模板
-templates = Jinja2Templates(directory="templates")
+templates_directory = os.path.join(os.path.dirname(__file__), "templates")
+templates = Jinja2Templates(directory=templates_directory)
 
 # Docker 服务实例
 docker_service = DockerService()
@@ -40,7 +41,7 @@ docker_service = DockerService()
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, db: Session = Depends(get_db)):
     """主仪表盘"""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 # ============ 统计 API ============
@@ -78,6 +79,34 @@ async def get_stats(db: Session = Depends(get_db)):
         },
         "templates": total_templates
     }
+
+
+@app.get("/api/ui/overview")
+async def get_overview_content():
+    """获取总览内容"""
+    try:
+        with open(os.path.join(templates_directory, "overview.js"), "r", encoding="utf-8") as f:
+            return {"content": f.read()}
+    except:
+        return {"content": "// Overview content not found"}
+
+@app.get("/api/ui/templates")
+async def get_templates_content():
+    """获取模板内容"""
+    try:
+        with open(os.path.join(templates_directory, "templates.js"), "r", encoding="utf-8") as f:
+            return {"content": f.read()}
+    except:
+        return {"content": "// Templates content not found"}
+
+@app.get("/api/ui/projects")
+async def get_projects_content():
+    """获取项目内容"""
+    try:
+        with open(os.path.join(templates_directory, "projects.js"), "r", encoding="utf-8") as f:
+            return {"content": f.read()}
+    except:
+        return {"content": "// Projects content not found"}
 
 
 @app.get("/api/containers/all")
@@ -120,4 +149,4 @@ if __name__ == "__main__":
     os.makedirs(settings.DATA_DIR, exist_ok=True)
     os.makedirs(settings.BACKUP_DIR, exist_ok=True)
     
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=settings.SERVER_PORT)

@@ -95,10 +95,12 @@ class OpenClawService:
             ["mkdir", "-p", "/root/.openclaw"]
         )
         
-        # 使用 echo 写入 (简单方式)
+        # 使用 printf 写入（安全处理特殊字符）
+        import shlex
+        config_escaped = shlex.quote(config_json)
         write_result = self.docker.exec_command(
             container_id,
-            ["sh", "-c", f"echo '{config_json}' > /root/.openclaw/openclaw.json"]
+            ["sh", "-c", f"printf '%s' {config_escaped} > /root/.openclaw/openclaw.json"]
         )
         
         if not write_result["success"]:
