@@ -144,9 +144,9 @@
                     if (agent.status === 'running' && agent.host_port) html += '<button class="btn primary" onclick="openUI(\'' + agent.host_port + '\')">🌐 打开 UI</button>';
                     if (agent.status === 'running') html += '<button class="btn warning" onclick="showConfig(\'' + agent.id + '\')">⚙️ 配置</button>';
                     if (agent.status === 'running') html += '<button class="btn" onclick="stopAgent(\'' + agent.id + '\')">⏹️ 停止</button>';
+                    if (agent.status === 'running') html += '<button class="btn" onclick="startClaw(\'' + agent.id + '\')">🐾 启动 Claw</button>';
                     else if (agent.status === 'stopped' || agent.status === 'error') {
                         html += '<button class="btn success" onclick="startAgent(\'' + agent.id + '\')">▶️ 启动容器</button>';
-                        html += '<button class="btn" onclick="startClaw(\'' + agent.id + '\')">🐾 启动 Claw</button>';
                     }
                     else html += '<button class="btn" disabled>⏳ 等待中</button>';
                     html += '</div>';
