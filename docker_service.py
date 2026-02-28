@@ -271,6 +271,26 @@ class DockerService:
         except Exception as e:
             return {"exists": False, "error": str(e)}
     
+    def list_all_containers(self) -> List[Dict[str, Any]]:
+        """列出所有容器（返回完整 64 位 ID）"""
+        try:
+            containers = self.client.containers.list(all=True)
+            result = []
+            for c in containers:
+                result.append({
+                    "id": c.id,
+                    "name": c.name,
+                    "image": c.image.tags[0] if c.image.tags else c.image.id[:12],
+                    "status": c.status,
+                    "state": c.attrs.get("State", {}).get("Status", "unknown"),
+                    "ports": c.ports,
+                    "created": c.attrs.get("Created", "")
+                })
+            return result
+        except Exception as e:
+            print(f"获取容器列表失败: {e}")
+            return []
+    
     def get_container_by_id(self, container_id: str) -> Optional[Dict[str, Any]]:
         """根据 ID 获取容器信息（Docker 支持 12 位或 64 位 ID）"""
         try:
