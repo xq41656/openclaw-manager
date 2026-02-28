@@ -712,8 +712,7 @@ def start_claw(agent_id: str, db: Session = Depends(get_db)):
         entity_type="agent",
         entity_id=agent_id,
         description=f"启动 Claw: {agent.name}",
-        agent_id=agent_id,
-        extra_data={"entrypoint_result": entrypoint_result}
+        agent_id=agent_id
     )
     
     return {"success": entrypoint_result.get("success", False), "message": f"Claw 启动完成", "result": entrypoint_result}
