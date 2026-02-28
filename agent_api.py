@@ -615,20 +615,26 @@ def start_agent(agent_id: str, db: Session = Depends(get_db)):
     
     result = docker_service.start_container(agent.container_id)
     if result["success"]:
+        import time
+        time.sleep(2)
+        
+        oc_service = OpenClawService()
+        entrypoint_result = oc_service.docker.run_entrypoint(agent.container_id)
+        
         agent.status = "running"
         db.commit()
         
-        # 审计日志
         audit = AuditService(db)
         audit.log(
             action="start",
             entity_type="agent",
             entity_id=agent_id,
             description=f"启动智能体: {agent.name}",
-            agent_id=agent_id
+            agent_id=agent_id,
+            extra_data={"entrypoint_result": entrypoint_result}
         )
         
-        return {"success": True, "message": f"智能体 {agent.name} 已启动"}
+        return {"success": True, "message": f"智能体 {agent.name} 已启动", "entrypoint": entrypoint_result}
     else:
         raise HTTPException(status_code=500, detail=result.get("error"))
 
