@@ -11,7 +11,7 @@ from datetime import datetime
 import uuid
 from docker_service import NotFound
 
-from database import get_db, Template, AgentInstance, PortAllocation
+from database import get_db, Template, AgentInstance, PortAllocation, AuditLog
 from docker_service import DockerService, PortPoolManager
 from openclaw_service import OpenClawService
 from audit_service import AuditService
