@@ -238,16 +238,16 @@ def create_template(template: TemplateCreate, background_tasks: BackgroundTasks,
     
     # 3. 创建智能体实例（关联到模板）
     agent_id = str(uuid.uuid4())
-    container_name = f"M-{template.id[:8]}"  # M-模板id
+    container_name = f"M-{db_template.id[:8]}"  # M-模板id
     
     db_agent = AgentInstance(
         id=agent_id,
-        name=f"{template.name}-instance",
+        name=f"{db_template.name}-instance",
         template_id=db_template.id,
         host_port=host_port,
-        image=template.image,
+        image=db_template.image,
         status="creating",
-        config=template.default_config or {}
+        config=db_template.default_config or {}
     )
     db.add(db_agent)
     db.commit()
@@ -376,7 +376,12 @@ def create_agent(agent: AgentCreate, background_tasks: BackgroundTasks, db: Sess
     if agent.template_id:
         template = db.query(Template).filter(Template.id == agent.template_id).first()
         if template:
-            config = template.default_config or {}
+            # 使用 template.default_config 或生成默认配置
+            if template.default_config:
+                config = template.default_config.copy()
+            else:
+                from openclaw_service import OpenClawService
+                config = OpenClawService().generate_config()
             image = template.image
     
     # 应用实例级配置覆盖
@@ -426,6 +431,8 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
     from database import SessionLocal, AgentInstance
     from datetime import datetime
     import traceback
+    from docker_service import DockerService
+    from openclaw_service import OpenClawService
     
     logs = []
     
@@ -433,9 +440,11 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         line = f"[{timestamp}] [{level}] {msg}"
         logs.append(line)
-        print(line)  # 同时打印到控制台
+        print(line)
     
     db = SessionLocal()
+    docker_service = DockerService()
+    oc_service = OpenClawService()
     
     def save_logs():
         """保存日志到数据库"""
@@ -493,11 +502,19 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
             log(f"✅ 容器创建成功")
             log(f"容器ID: {container_id}")
             
+            # 等待容器启动（openclaw 已自启动）
+            import time
+            log("等待容器启动...")
+            time.sleep(5)  # 等待5秒让openclaw启动完成
+            save_logs()
+            
             # 应用配置
             log("步骤3: 应用 OpenClaw 配置...")
             save_logs()
             
-            oc_service = OpenClawService()
+            # 如果 config 为空，生成默认配置
+            if not config:
+                config = oc_service.generate_config()
             config_result = oc_service.apply_config_to_container(container_id, config)
             log(f"配置应用结果: {config_result}")
             
@@ -505,6 +522,20 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
                 log("✅ 配置应用成功")
             else:
                 log(f"⚠️ 配置应用失败: {config_result.get('error')}", "WARNING")
+            
+            # 重启容器使配置生效（openclaw只在启动时读取配置）
+            log("步骤3.5: 重启容器使配置生效...")
+            save_logs()
+            restart_result = docker_service.restart_container(container_id)
+            if restart_result["success"]:
+                log("✅ 容器重启成功")
+            else:
+                log(f"⚠️ 容器重启失败: {restart_result.get('error')}", "WARNING")
+            
+            # 等待容器重启完成
+            log("等待容器重启完成...")
+            time.sleep(3)
+            save_logs()
             
             # 更新数据库状态
             log("步骤4: 更新数据库状态为 running...")
@@ -753,7 +784,8 @@ def update_agent_config(agent_id: str, config: AgentConfigUpdate, db: Session = 
     old_config = agent.config
     
     # 生成新配置
-    oc_service = OpenClawService()
+    if not config:
+        config = oc_service.generate_config()
     new_config = oc_service.generate_config(
         ai_key=config.ai_key,
         provider=config.provider,
@@ -802,7 +834,8 @@ def check_agent_health(agent_id: str, db: Session = Depends(get_db)):
     # Gateway 健康检查
     health_result = {"checked": False}
     if agent.host_port:
-        oc_service = OpenClawService()
+        if not config:
+            config = oc_service.generate_config()
         health_result = oc_service.health_check("127.0.0.1", agent.host_port)
         agent.health_status = "healthy" if health_result.get("healthy") else "unhealthy"
         agent.last_health_check = datetime.utcnow()

@@ -66,13 +66,18 @@ class DockerService:
     def pull_image(self, repository: str, tag: str = "latest") -> Dict[str, Any]:
         """检查本地镜像是否存在（不拉取远程镜像）"""
         try:
-            # 处理完整的镜像名称 (如 "openclaw/openclaw:latest")
-            if ":" in repository and tag == "latest":
+            print(f"DEBUG pull_image: original repository='{repository}', tag='{tag}'")
+            # 处理完整的镜像名称 (如 "openclaw/openclaw:latest" 或 "openclaw-custom:latest")
+            if ":" in repository:
                 parts = repository.rsplit(":", 1)
-                if "/" in parts[0] or "." in parts[0]:
+                print(f"DEBUG pull_image: parts={parts}")
+                # 如果第二部分是有效的tag（不是端口号），使用它作为tag
+                if "/" in parts[0] or "." in parts[0] or not parts[1].isdigit():
                     repository = parts[0]
                     tag = parts[1]
+                    print(f"DEBUG pull_image: updated repository='{repository}', tag='{tag}'")
             
+            print(f"DEBUG pull_image: final repository='{repository}', tag='{tag}', combined='{repository}:{tag}'")
             # 只检查本地是否已有镜像，不拉取
             try:
                 image = self.client.images.get(f"{repository}:{tag}")
@@ -142,7 +147,7 @@ class DockerService:
                     ports=ports,
                     environment=environment or {},
                     volumes=volumes or {},
-                    command=command,
+                    command=None,  # Use default entrypoint/cmd from image'.
                     detach=True,
                     restart_policy={"Name": "unless-stopped"}
                 )
@@ -175,7 +180,7 @@ class DockerService:
                     ports=ports,
                     environment=environment or {},
                     volumes=volumes or {},
-                    command=command,
+                    command=None,  # Use default entrypoint/cmd from image'.
                     detach=True,
                     restart_policy={"Name": "unless-stopped"}
                 )

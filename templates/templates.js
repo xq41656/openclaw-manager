@@ -63,7 +63,10 @@ async function loadTemplates() {
         // 如果有正在创建的实例，继续轮询
         const creatingAgents = agentsData.filter(a => a.status === 'creating');
         if (creatingAgents.length > 0) {
+            console.log(`检测到 ${creatingAgents.length} 个创建中的实例，3秒后继续检查...`);
             setTimeout(loadTemplates, 3000);
+        } else {
+            console.log('所有实例创建完成');
         }
     } catch (e) {
         el.innerHTML = `<div class="empty-state" style="padding:40px 20px;">加载失败: ${e.message}</div>`;
@@ -85,10 +88,10 @@ async function stopAgent(id) {
 async function viewLogs(id) {
     currentLogAgentId = id;
     document.getElementById('logs-modal').classList.add('active');
-    await loadtemplatesLogs();
+    await loadCombinedLogs();
 }
 
-async function loadtemplatesLogs() {
+async function loadCombinedLogs() {
     if (!currentLogAgentId) return;
     
     document.getElementById('logs-content').textContent = '加载中...';

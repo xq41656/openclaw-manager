@@ -32,6 +32,9 @@ app.include_router(project_router)
 templates_directory = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=templates_directory)
 
+# 挂载 templates 目录为静态文件，允许直接访问 HTML 文件
+app.mount("/templates", StaticFiles(directory=templates_directory), name="templates")
+
 # Docker 服务实例
 docker_service = DockerService()
 

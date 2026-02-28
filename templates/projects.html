@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Manager - 项目</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.6; padding: 20px; }
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .section-header h2 { font-size: 18px; color: #f0f6fc; }
+        .btn { padding: 6px 12px; font-size: 12px; border-radius: 4px; cursor: pointer; border: none; background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+        .btn:hover { background: #30363d; }
+        .btn.primary { background: #1f6feb; color: white; }
+        .btn.success { background: #238636; color: white; }
+        .btn.danger { background: #da3633; color: white; }
+        .btn.warning { background: #f0883e; color: black; }
+        .empty-state { padding: 40px 20px; text-align: center; color: #8b949e; }
+        .project-card { background: #21262d; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 16px; }
+        .project-header { padding: 16px; cursor: pointer; }
+        .project-header:hover { background: #232933; }
+        .project-name { font-size: 16px; font-weight: 600; color: #f0f6fc; margin-bottom: 8px; }
+        .template-meta { font-size: 12px; color: #8b949e; }
+        .actions { display: flex; gap: 8px; }
+        .instance-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 16px; }
+        .instance-table th, .instance-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #30363d; }
+        .instance-table th { background: #161b22; color: #8b949e; font-weight: 600; }
+        .instance-table tr:hover { background: #21262d; }
+        .container-id { font-family: monospace; font-size: 11px; }
+        .status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status.running { background: rgba(35,134,54,0.15); color: #3fb950; }
+        .status.stopped { background: rgba(240,136,62,0.15); color: #f0883e; }
+        .status.creating { background: rgba(240,136,62,0.15); color: #f0883e; }
+        .status.error { background: rgba(218,54,51,0.15); color: #da3633; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status.running .status-dot { background: #3fb950; }
+        .status.stopped .status-dot { background: #f0883e; }
+        .status.creating .status-dot { background: #f0883e; }
+        .status.error .status-dot { background: #da3633; }
+        .badge { background: #1f6feb; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 12px; width: 90%; max-width: 600px; }
+        .modal-header { padding: 20px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { font-size: 16px; color: #f0f6fc; }
+        .modal-body { padding: 20px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: #8b949e; }
+        .form-group input { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div id="projects-content"><div class="empty-state">加载中...</div></div>
+
+    <div class="modal" id="project-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>新建项目</h3><button class="btn" onclick="closeModal('project-modal')">✕</button></div>
+            <div class="modal-body">
+                <div class="form-group"><label>项目名称 *</label><input type="text" id="proj-name" placeholder="输入项目名称"></div>
+                <div class="form-group"><label>描述</label><input type="text" id="proj-desc" placeholder="输入项目描述"></div>
+            </div>
+            <div class="modal-header" style="border-top:1px solid #30363d;border-bottom:none;"><button class="btn" onclick="submitCreateProject()">创建项目</button></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let agentsData = [];
+
+        function getStatusClass(s) { const m = { running: 'running', stopped: 'stopped', creating: 'creating', error: 'error' }; return m[s] || 'stopped'; }
+        function getStatusText(s) { const m = { running: '运行中', stopped: '已停止', creating: '创建中', error: '错误' }; return m[s] || s; }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        function toggle(id) {
+            const el = document.getElementById(id);
+            if (el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
+        }
+
+        function openUI(port) { window.open('http://' + window.location.hostname + ':' + port, '_blank'); }
+
+        async function loadProjects() {
+            const el = document.getElementById('projects-content');
+            el.innerHTML = '<div class="empty-state">加载中...</div>';
+            try {
+                const p = await fetch(API_BASE + '/api/projects').then(r => r.json());
+                if (p.length === 0) {
+                    el.innerHTML = '<div class="section"><div class="section-header"><h2>📁 项目列表</h2><button class="btn" onclick="showCreateProject()">+ 新建项目</button></div><div class="empty-state">暂无项目，点击上方按钮创建</div></div>';
+                    return;
+                }
+                agentsData = await fetch(API_BASE + '/api/agents/instances').then(r => r.json());
+                p.forEach(x => { x.projectAgents = agentsData.filter(a => a.project_id === x.id); });
+                let html = '<div class="section"><div class="section-header"><h2>📁 项目列表</h2><button class="btn" onclick="showCreateProject()">+ 新建项目</button></div>';
+                p.forEach(x => {
+                    html += '<div class="project-card">';
+                    html += '<div class="project-header" onclick="toggle(\'proj-' + x.id + '\')">';
+                    html += '<div><div class="project-name">' + x.name + (x.projectAgents.length > 0 ? '<span class="badge">' + x.projectAgents.length + ' 实例</span>' : '') + '</div><div class="template-meta">ID: ' + x.id.slice(0,8) + ' | ' + (x.description || '无描述') + '</div></div>';
+                    html += '<div class="actions" onclick="event.stopPropagation()">';
+                    html += '<button class="btn" onclick="cloneTemplateToProject(\'' + x.id + '\')">📋 克隆模板</button>';
+                    html += '<button class="btn" onclick="archiveProject(\'' + x.id + '\')">归档</button>';
+                    html += '<button class="btn danger" onclick="deleteProject(\'' + x.id + '\')">删除</button>';
+                    html += '</div></div>';
+                    html += '<div id="proj-' + x.id + '" class="project-instances hidden">';
+                    if (x.projectAgents.length > 0) {
+                        html += '<table class="instance-table"><thead><tr><th>实例名称</th><th>容器ID</th><th>端口</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+                        x.projectAgents.forEach(a => {
+                            html += '<tr>';
+                            html += '<td>' + a.name + (a.id === x.main_agent_id ? '<span class="badge">主</span>' : '') + '</td>';
+                            html += '<td class="container-id" title="' + (a.container_id || '') + '">' + (a.container_id || '-') + '</td>';
+                            html += '<td class="port-num">' + (a.host_port || '-') + '</td>';
+                            html += '<td><span class="status ' + getStatusClass(a.status) + '"><span class="status-dot"></span>' + getStatusText(a.status) + '</span></td>';
+                            html += '<td class="actions">';
+                            if (a.host_port) {
+                                html += '<button class="btn primary" onclick="openUI(\'' + a.host_port + '\')">UI</button>';
+                            }
+                            html += '<button class="btn warning" onclick="showConfig(\'' + a.id + '\')">配置</button>';
+                            if (a.status === 'running') {
+                                html += '<button class="btn" onclick="stopAgent(\'' + a.id + '\')">停止</button>';
+                            } else {
+                                html += '<button class="btn success" onclick="startAgent(\'' + a.id + '\')">启动</button>';
+                            }
+                            html += '</td></tr>';
+                        });
+                        html += '</tbody></table>';
+                    }
+                    html += '</div></div>';
+                });
+                html += '</div>';
+                el.innerHTML = html;
+            } catch(e) {
+                el.innerHTML = '<div class="empty-state">加载失败: ' + e.message + '</div>';
+            }
+        }
+
+        async function startAgent(id) {
+            await fetch(API_BASE + '/api/agents/instances/' + id + '/start', {method: 'POST'});
+            loadProjects();
+        }
+
+        async function stopAgent(id) {
+            await fetch(API_BASE + '/api/agents/instances/' + id + '/stop', {method: 'POST'});
+            loadProjects();
+        }
+
+        async function showConfig(id) {
+            // 调用父窗口的 showConfig 函数（如果存在）
+            if (parent && parent.window.showConfig) {
+                parent.window.showConfig(id);
+            } else {
+                console.log('showConfig called for agent:', id);
+            }
+        }
+
+        function archiveProject(id) {
+            if (!confirm('确定要归档此项目吗？')) return;
+            fetch(API_BASE + '/api/projects/' + id + '/archive', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    alert(data.message || '✅ 归档成功');
+                    loadProjects();
+                })
+                .catch(e => alert('❌ 归档失败: ' + e.message));
+        }
+
+        function deleteProject(id) {
+            if (!confirm('确定要删除此项目吗？所有关联的实例和容器也会被删除。')) return;
+            fetch(API_BASE + '/api/projects/' + id, {method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true })})
+                .then(r => r.json())
+                .then(data => {
+                    alert(data.message || '✅ 删除成功');
+                    loadProjects();
+                })
+                .catch(e => alert('❌ 删除失败: ' + e.message));
+        }
+
+        function cloneTemplateToProject(projectId) {
+            fetch(API_BASE + '/api/agents/templates')
+                .then(r => r.json())
+                .then(templates => {
+                    if (templates.length === 0) {
+                        alert('没有可用的模板');
+                        return;
+                    }
+                    const options = templates.map(t => t.id.slice(0,8) + ' - ' + t.name).join('\n');
+                    const tid = prompt('输入要克隆的模板ID:\n' + options);
+                    if (!tid) return;
+                    fetch(API_BASE + '/api/projects/' + projectId + '/clone-template', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ template_id: tid })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        alert(data.message || '✅ 克隆成功');
+                        loadProjects();
+                    })
+                    .catch(e => alert('❌ 克隆失败: ' + e.message));
+                })
+                .catch(e => alert('❌ 加载模板失败: ' + e.message));
+        }
+
+        function showCreateProject() {
+            document.getElementById('proj-name').value = '';
+            document.getElementById('proj-desc').value = '';
+            document.getElementById('project-modal').classList.add('active');
+        }
+
+        async function submitCreateProject() {
+            const name = document.getElementById('proj-name').value.trim();
+            const description = document.getElementById('proj-desc').value.trim();
+            if (!name) { alert('请输入项目名称'); return; }
+            try {
+                await fetch(API_BASE + '/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description })
+                });
+                closeModal('project-modal');
+                loadProjects();
+                alert('✅ 项目创建成功');
+            } catch(e) {
+                alert('❌ 创建失败: ' + e.message);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadProjects();
+            setInterval(loadProjects, 30000);
+        });
+    </script>
+</body>
+</html>

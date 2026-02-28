@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Manager - 模板</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.6; padding: 20px; }
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .section-header h2 { font-size: 18px; color: #f0f6fc; }
+        .btn { padding: 6px 12px; font-size: 12px; border-radius: 4px; cursor: pointer; border: none; background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+        .btn:hover { background: #30363d; }
+        .btn.primary { background: #1f6feb; color: white; }
+        .btn.success { background: #238636; color: white; }
+        .btn.danger { background: #da3633; color: white; }
+        .btn.warning { background: #f0883e; color: black; }
+        .empty-state { padding: 40px 20px; text-align: center; color: #8b949e; }
+        .template-instance { background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .template-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .template-title { font-size: 15px; font-weight: 600; color: #f0f6fc; margin-bottom: 8px; }
+        .template-meta { font-size: 12px; color: #8b949e; }
+        .info-item { display: inline-block; margin-right: 20px; margin-bottom: 8px; }
+        .info-label { display: block; font-size: 11px; color: #8b949e; margin-bottom: 4px; }
+        .info-value { font-size: 13px; color: #c9d1d9; }
+        .port-num { font-family: monospace; }
+        .actions { display: flex; gap: 8px; }
+        .status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status.running { background: rgba(35,134,54,0.15); color: #3fb950; }
+        .status.stopped { background: rgba(240,136,62,0.15); color: #f0883e; }
+        .status.creating { background: rgba(240,136,62,0.15); color: #f0883e; }
+        .status.error { background: rgba(218,54,51,0.15); color: #da3633; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status.running .status-dot { background: #3fb950; }
+        .status.stopped .status-dot { background: #f0883e; }
+        .status.creating .status-dot { background: #f0883e; }
+        .status.error .status-dot { background: #da3633; }
+        .container-id { font-family: monospace; font-size: 11px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 12px; width: 90%; max-width: 600px; }
+        .modal-header { padding: 20px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { font-size: 16px; color: #f0f6fc; }
+        .modal-body { padding: 20px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: #8b949e; }
+        .form-group input, .form-group select { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
+        .logs-content { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 16px; font-family: monospace; font-size: 12px; max-height: 500px; overflow: auto; white-space: pre-wrap; }
+        .log-tabs { display: flex; gap: 5px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div id="templates-content"><div class="empty-state">加载中...</div></div>
+
+    <div class="modal" id="logs-modal">
+        <div class="modal-content" style="max-width: 900px;"><div class="modal-header"><h3 id="logs-title">容器日志</h3>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <div class="log-tabs"><button class="btn primary" onclick="switchLogTab('combined')">📋 合并日志</button><button class="btn" onclick="switchLogTab('creation')">🔨 创建日志</button><button class="btn" onclick="switchLogTab('config')">⚙️ 配置变更</button></div>
+                <button class="btn" onclick="closeModal('logs-modal')">✕</button>
+            </div>
+        </div><div class="modal-body"><div class="logs-content" id="logs-content" style="max-height: 500px;"></div></div></div>
+    </div>
+
+    <div class="modal" id="config-modal">
+        <div class="modal-content"><div class="modal-header"><h3>智能体配置</h3><button class="btn" onclick="closeModal('config-modal')">✕</button></div>
+            <div class="modal-body"><input type="hidden" id="cfg-agent-id">
+                <div class="form-group"><label>AI Provider</label><select id="cfg-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option></select></div>
+                <div class="form-group"><label>API Key</label><input type="password" id="cfg-apikey" placeholder="输入 API Key"></div>
+                <div class="form-group"><label>Gateway Token</label><input type="text" id="cfg-token" placeholder="输入 Gateway Token"></div>
+            </div><div class="modal-header" style="border-top:1px solid #30363d;border-bottom:none;"><button class="btn" onclick="saveConfig()">保存并应用</button></div>
+        </div>
+    </div>
+
+    <div class="modal" id="edit-template-modal">
+        <div class="modal-content"><div class="modal-header"><h3>编辑模板</h3><button class="btn" onclick="closeModal('edit-template-modal')">✕</button></div>
+            <div class="modal-body"><input type="hidden" id="edit-tpl-id"><input type="hidden" id="edit-agent-id">
+                <div class="form-group"><label>模板名称 *</label><input type="text" id="edit-tpl-name" placeholder="输入模板名称"></div>
+                <div class="form-group"><label>描述</label><input type="text" id="edit-tpl-desc" placeholder="输入模板描述"></div>
+                <div class="form-group"><label>容器ID <span style="color:#8b949e;font-weight:normal;">(修改后将指向新的容器)</span></label>
+                    <input type="text" id="edit-container-id" placeholder="输入容器ID (64位)">
+                    <div id="container-check-result" style="margin-top:6px;font-size:12px;"></div>
+                    <button type="button" class="btn" onclick="checkContainerExists()" style="margin-top:8px;font-size:12px;">🔍 检查容器是否存在</button>
+                </div>
+            </div><div class="modal-header" style="border-top:1px solid #30363d;border-bottom:none;"><button class="btn" onclick="submitEditTemplate()">保存修改</button></div>
+        </div>
+    </div>
+
+    <div class="modal" id="template-modal">
+        <div class="modal-content"><div class="modal-header"><h3>新建模板</h3><button class="btn" onclick="closeModal('template-modal')">✕</button></div>
+            <div class="modal-body">
+                <div class="form-group"><label>模板名称 *</label><input type="text" id="tpl-name" placeholder="输入模板名称"></div>
+                <div class="form-group"><label>描述</label><input type="text" id="tpl-desc" placeholder="输入模板描述"></div>
+                <div class="form-group"><label>Docker 镜像 *</label><select id="tpl-image" style="width:100%;padding:10px 12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:14px;"><option value="">加载中...</option></select>
+                    <div style="margin-top:6px;font-size:12px;color:#8b949e;"><button type="button" class="btn" onclick="refreshLocalImages()" style="font-size:11px;padding:4px 10px;">🔄 刷新镜像列表</button></div>
+                </div>
+                <div class="form-group"><label>主机端口映射 <span style="color:#8b949e;font-weight:normal;">(容器端口固定 18789)</span></label>
+                    <div style="display:flex;gap:10px;align-items:center;"><input type="number" id="tpl-host-port" placeholder="自动分配" style="width:150px;"><span style="color:#8b949e;">→ 18789</span><button type="button" class="btn" onclick="autoAssignPort()" style="font-size:12px;">🔄 自动分配</button></div>
+                    <div id="port-error" style="color:#f85149;font-size:12px;margin-top:6px;display:none;"></div>
+                </div>
+            </div>
+            <div class="modal-header" style="border-top:1px solid #30363d;border-bottom:none;"><button class="btn" onclick="submitCreateTemplate()">创建模板</button></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let templatesData = [];
+        let agentsData = [];
+        let currentLogAgentId = null;
+        let usedPorts = [];
+
+        function getStatusClass(s) { const m = { running: 'running', stopped: 'stopped', creating: 'creating', error: 'error' }; return m[s] || 'stopped'; }
+        function getStatusText(s) { const m = { running: '运行中', stopped: '已停止', creating: '创建中', error: '错误' }; return m[s] || s; }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        function openUI(port) { window.open('http://' + window.location.hostname + ':' + port, '_blank'); }
+
+        async function loadTemplates() {
+            const el = document.getElementById('templates-content');
+            el.innerHTML = '<div class="empty-state">加载中...</div>';
+            try {
+                templatesData = await fetch(API_BASE + '/api/agents/templates').then(r => r.json());
+                agentsData = await fetch(API_BASE + '/api/agents/instances').then(r => r.json());
+            } catch(e) {
+                el.innerHTML = '<div class="section"><div class="section-header"><h2>📋 模板实例</h2><button class="btn" onclick="showCreateTemplate()">+ 新建模板</button></div><div class="empty-state">加载失败: ' + e.message + '</div></div>';
+                return;
+            }
+            
+            if (templatesData.length === 0) {
+                el.innerHTML = '<div class="section"><div class="section-header"><h2>📋 模板实例</h2><button class="btn" onclick="showCreateTemplate()">+ 新建模板</button></div><div class="empty-state">暂无模板，点击上方按钮创建</div></div>';
+                return;
+            }
+            
+            let html = '<div class="section"><div class="section-header"><h2>📋 模板实例</h2><button class="btn" onclick="showCreateTemplate()">+ 新建模板</button></div>';
+            templatesData.forEach(t => {
+                const agent = agentsData.find(a => a.template_id === t.id);
+                html += '<div class="template-instance"><div class="template-header"><div><div class="template-title">' + t.name + '</div><div class="template-meta">ID: ' + t.id.slice(0,8) + ' | 镜像: ' + t.image + (t.description ? ' | 描述: ' + t.description : '') + '</div></div><div class="actions"><button class="btn" onclick="editTemplate(\'' + t.id + '\')">编辑</button><button class="btn danger" onclick="deleteTemplate(\'' + t.id + '\')">删除</button></div></div>';
+                if (agent) {
+                    html += '<div class="template-info"><div class="info-item"><div class="info-label">状态</div><div class="info-value"><span class="status ' + getStatusClass(agent.status) + '"><span class="status-dot"></span>' + getStatusText(agent.status) + '</span></div></div><div class="info-item"><div class="info-label">端口</div><div class="info-value port-num">' + (agent.host_port || '-') + '</div></div><div class="info-item"><div class="info-label">容器ID</div><div class="info-value container-id" title="' + (agent.container_id || '') + '">' + (agent.container_id ? agent.container_id : '-') + '</div></div></div>';
+                    if (agent.status === 'error' && agent.config && agent.config.error) {
+                        html += '<div style="background:rgba(218,54,51,0.1);border-left:3px solid #da3633;padding:10px 15px;margin:10px 0;border-radius:4px;color:#f85149;font-size:12px;">❌ ' + agent.config.error + '</div>';
+                    }
+                    html += '<div class="actions" style="justify-content:center"><button class="btn" onclick="viewLogs(\'' + agent.id + '\')">📄 日志</button>';
+                    if (agent.status === 'running' && agent.host_port) html += '<button class="btn primary" onclick="openUI(\'' + agent.host_port + '\')">🌐 打开 UI</button>';
+                    if (agent.status === 'running') html += '<button class="btn warning" onclick="showConfig(\'' + agent.id + '\')">⚙️ 配置</button>';
+                    if (agent.status === 'running') html += '<button class="btn" onclick="stopAgent(\'' + agent.id + '\')">⏹️ 停止</button>';
+                    else if (agent.status === 'stopped' || agent.status === 'error') html += '<button class="btn success" onclick="startAgent(\'' + agent.id + '\')">▶️ 启动</button>';
+                    else html += '<button class="btn" disabled>⏳ 等待中</button>';
+                    html += '</div>';
+                } else {
+                    html += '<div class="empty-state" style="padding:20px">该模板尚未创建实例</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+            el.innerHTML = html;
+            
+            const creatingAgents = agentsData.filter(a => a.status === 'creating');
+            if (creatingAgents.length > 0) setTimeout(loadTemplates, 3000);
+        }
+
+        async function startAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start', {method: 'POST'}); loadTemplates(); loadProjects(); }
+        async function stopAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop', {method: 'POST'}); loadTemplates(); loadProjects(); }
+        
+        async function viewLogs(id) {
+            currentLogAgentId = id;
+            document.getElementById('logs-modal').classList.add('active');
+            await loadCombinedLogs();
+        }
+        
+        function switchLogTab(tab) { if (tab === 'combined') loadCombinedLogs(); else if (tab === 'creation') loadCreationLogs(); else if (tab === 'config') loadConfigLogs(); }
+        
+        async function loadCombinedLogs() {
+            if (!currentLogAgentId) return;
+            document.getElementById('logs-content').textContent = '加载中...';
+            try {
+                const [logsRes, creationRes, configRes] = await Promise.all([fetch(API_BASE + '/api/agents/instances/' + currentLogAgentId + '/logs?tail=50').then(r => r.json()),fetch(API_BASE + '/api/agents/instances/' + currentLogAgentId + '/creation-logs').then(r => r.json()),fetch(API_BASE + '/api/agents/instances/' + currentLogAgentId + '/config-logs').then(r => r.json())]);
+                const content = [];
+                if (logsRes.logs) { content.push('--- 📄 容器日志（最近50行） ---'); content.push(logsRes.logs); }
+                if (creationRes.logs && creationRes.logs !== '暂无创建日志') { content.push('\n--- 🔨 创建日志 ---'); content.push(creationRes.logs); }
+                if (configRes.logs && configRes.logs.length > 0) { content.push('\n--- ⚙️ 配置变更日志 ---'); configRes.logs.forEach(log => { const time = new Date(log.created_at).toLocaleString('zh-CN'); content.push('[' + time + '] ' + log.description); if (log.old_value) content.push('  旧配置: ' + JSON.stringify(log.old_value, null, 2)); if (log.new_value) content.push('  新配置: ' + JSON.stringify(log.new_value, null, 2)); }); }
+                document.getElementById('logs-content').textContent = content.join('\n') || '暂无日志';
+            } catch(e) { document.getElementById('logs-content').textContent = '获取日志失败: ' + e.message; }
+        }
+        
+        async function loadCreationLogs() {
+            if (!currentLogAgentId) return;
+            document.getElementById('logs-content').textContent = '加载中...';
+            try { const d = await fetch(API_BASE + '/api/agents/instances/' + currentLogAgentId + '/creation-logs').then(r => r.json()); document.getElementById('logs-content').textContent = d.logs || '暂无创建日志'; } catch(e) { document.getElementById('logs-content').textContent = '获取日志失败: ' + e.message; }
+        }
+        
+        async function loadConfigLogs() {
+            if (!currentLogAgentId) return;
+            document.getElementById('logs-content').textContent = '加载中...';
+            try { const d = await fetch(API_BASE + '/api/agents/instances/' + currentLogAgentId + '/config-logs').then(r => r.json()); if (d.logs && d.logs.length > 0) { const content = d.logs.map(log => { const time = new Date(log.created_at).toLocaleString('zh-CN'); let text = '[' + time + '] ' + log.description; if (log.old_value) text += '\n  旧配置: ' + JSON.stringify(log.old_value, null, 2); if (log.new_value) text += '\n  新配置: ' + JSON.stringify(log.new_value, null, 2); return text; }); document.getElementById('logs-content').textContent = content.join('\n\n==========\n\n'); } else { document.getElementById('logs-content').textContent = '暂无配置变更日志'; } } catch(e) { document.getElementById('logs-content').textContent = '获取日志失败: ' + e.message; }
+        }
+        
+        async function showConfig(id) {
+            currentAgentId = id;
+            document.getElementById('config-modal').classList.add('active');
+            const a = await fetch(API_BASE + '/api/agents/instances/' + id).then(r => r.json());
+            document.getElementById('cfg-agent-id').value = id;
+            if (a.config) { document.getElementById('cfg-provider').value = a.config.provider || 'openai'; document.getElementById('cfg-token').value = a.config.gateway_token || ''; }
+        }
+        
+        async function saveConfig() {
+            const id = document.getElementById('cfg-agent-id').value;
+            await fetch(API_BASE + '/api/agents/instances/' + id + '/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: document.getElementById('cfg-provider').value, ai_key: document.getElementById('cfg-apikey').value, gateway_token: document.getElementById('cfg-token').value }) });
+            closeModal('config-modal');
+            alert('配置已保存并应用');
+        }
+        
+        async function editTemplate(id) {
+            try {
+                const t = await fetch(API_BASE + '/api/agents/templates/' + id).then(r => r.json());
+                const agents = await fetch(API_BASE + '/api/agents/instances?template_id=' + id).then(r => r.json());
+                const agent = agents.find(a => a.template_id === id);
+                document.getElementById('edit-tpl-id').value = id;
+                document.getElementById('edit-agent-id').value = agent ? agent.id : '';
+                document.getElementById('edit-tpl-name').value = t.name || '';
+                document.getElementById('edit-tpl-desc').value = t.description || '';
+                document.getElementById('edit-container-id').value = agent && agent.container_id ? agent.container_id : '';
+                document.getElementById('container-check-result').textContent = '';
+                document.getElementById('edit-template-modal').classList.add('active');
+            } catch(e) { alert('加载模板失败: ' + e.message); }
+        }
+        
+        async function checkContainerExists() {
+            const containerId = document.getElementById('edit-container-id').value.trim();
+            const resultEl = document.getElementById('container-check-result');
+            if (!containerId) { resultEl.textContent = '请输入容器ID'; resultEl.style.color = '#f85149'; return; }
+            resultEl.textContent = '检查中...'; resultEl.style.color = '#8b949e';
+            try {
+                const containerInfo = await fetch(API_BASE + '/api/containers/' + containerId).then(r => r.json());
+                if (containerInfo.exists) { resultEl.textContent = '✅ 容器存在: ' + containerInfo.name + ' (' + containerInfo.status + ')'; resultEl.style.color = '#3fb950'; document.getElementById('edit-container-id').value = containerInfo.id; }
+                else { resultEl.textContent = '❌ 容器不存在，请检查ID是否正确'; resultEl.style.color = '#f85149'; }
+            } catch(e) { resultEl.textContent = '检查失败: ' + e.message; resultEl.style.color = '#f85149'; }
+        }
+        
+        async function submitEditTemplate() {
+            const tplId = document.getElementById('edit-tpl-id').value;
+            const agentId = document.getElementById('edit-agent-id').value;
+            const name = document.getElementById('edit-tpl-name').value.trim();
+            const description = document.getElementById('edit-tpl-desc').value.trim();
+            const containerId = document.getElementById('edit-container-id').value.trim();
+            if (!name) { alert('请输入模板名称'); return; }
+            try {
+                let containerUpdateData = null;
+                if (agentId && containerId) {
+                    const containerInfo = await fetch(API_BASE + '/api/containers/' + containerId).then(r => r.json());
+                    if (!containerInfo.exists) { alert('❌ 保存失败：指定的容器ID不存在，请检查后再试'); return; }
+                    let hostPort = null;
+                    if (containerInfo.ports) { for (const [key, bindings] of Object.entries(containerInfo.ports)) { if (Array.isArray(bindings) && bindings.length > 0) { hostPort = parseInt(bindings[0].HostPort); break; } } }
+                    containerUpdateData = { container_id: containerInfo.id, container_name: containerInfo.name, host_port: hostPort };
+                }
+                await fetch(API_BASE + '/api/agents/templates/' + tplId, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description }) });
+                if (agentId && containerUpdateData) { await fetch(API_BASE + '/api/agents/instances/' + agentId + '/update-container', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(containerUpdateData) }); }
+                closeModal('edit-template-modal');
+                loadTemplates();
+                alert('✅ 保存成功');
+            } catch(e) { alert('❌ 保存失败: ' + e.message); }
+        }
+        
+        function deleteTemplate(id) {
+            if (!confirm('确定要删除此模板吗？关联的实例和容器也会被删除。')) return;
+            fetch(API_BASE + '/api/agents/templates/' + id, { method: 'DELETE' }).then(r => r.json()).then(data => { alert(data.message || '✅ 删除成功'); loadTemplates(); }).catch(e => alert('❌ 删除失败: ' + e.message));
+        }
+        
+        async function showCreateTemplate() {
+            console.log('打开新建模板弹窗');
+            await refreshUsedPorts();
+            document.getElementById('tpl-name').value = '';
+            document.getElementById('tpl-desc').value = '';
+            document.getElementById('port-error').style.display = 'none';
+            const autoPort = findAvailablePort();
+            document.getElementById('tpl-host-port').value = autoPort || '';
+            await refreshLocalImages();
+            document.getElementById('template-modal').classList.add('active');
+            console.log('弹窗已打开');
+        }
+        
+        function autoAssignPort() {
+            const port = findAvailablePort();
+            if (port) { document.getElementById('tpl-host-port').value = port; document.getElementById('port-error').style.display = 'none'; }
+            else { document.getElementById('port-error').textContent = '无法找到可用端口'; document.getElementById('port-error').style.display = 'block'; }
+        }
+        
+        async function submitCreateTemplate() {
+            const name = document.getElementById('tpl-name').value.trim();
+            const description = document.getElementById('tpl-desc').value.trim();
+            const imageSelect = document.getElementById('tpl-image');
+            const image = imageSelect.value;
+            const hostPort = document.getElementById('tpl-host-port').value.trim();
+            console.log('提交创建模板:', { name, image, hostPort });
+            if (!name) { alert('请输入模板名称'); return; }
+            if (!image) { alert('请选择 Docker 镜像'); return; }
+            if (hostPort) { const check = checkPortAvailable(hostPort); if (!check.valid) { document.getElementById('port-error').textContent = check.msg; document.getElementById('port-error').style.display = 'block'; return; } }
+            const payload = { name, description, image, host_port: hostPort ? parseInt(hostPort) : null };
+            try {
+                const resp = await fetch(API_BASE + '/api/agents/templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!resp.ok) { const err = await resp.json(); alert('创建失败: ' + (err.detail || err.message || '未知错误')); return; }
+                closeModal('template-modal');
+                loadTemplates();
+                alert('✅ 模板创建成功');
+            } catch(e) { alert('创建失败: ' + e.message); }
+        }
+        
+        async function refreshLocalImages() {
+            const select = document.getElementById('tpl-image');
+            if (!select) { console.error('找不到 tpl-image 元素'); return; }
+            select.innerHTML = '<option value="">加载中...</option>';
+            try {
+                const images = await fetch(API_BASE + '/api/docker/images').then(r => r.json());
+                if (images.length === 0) { select.innerHTML = '<option value="">暂无本地镜像</option>'; }
+                else { select.innerHTML = images.map(img => '<option value="' + img.tag + '">' + img.tag + ' (' + (img.size / 1024 / 1024).toFixed(1) + ' MB)</option>').join(''); }
+            } catch(e) { console.error('获取镜像失败:', e); select.innerHTML = '<option value="">加载失败</option>'; }
+        }
+        
+        async function refreshUsedPorts() {
+            try { const agents = await fetch(API_BASE + '/api/agents/instances').then(r => r.json()); usedPorts = agents.map(a => a.host_port).filter(p => p); console.log('已用端口:', usedPorts); return usedPorts; } catch(e) { console.error('获取端口失败:', e); return []; }
+        }
+        
+        function findAvailablePort() { for (let port = 30001; port <= 30500; port++) { if (!usedPorts.includes(port)) { return port; } } return null; }
+        
+        function checkPortAvailable(port) { if (usedPorts.includes(parseInt(port))) { return { valid: false, msg: '端口已被占用' }; } return { valid: true }; }
+        
+        async function loadProjects() { const p = await fetch(API_BASE + '/api/projects').then(r => r.json()); console.log('projects loaded:', p); }
+
+        document.addEventListener('DOMContentLoaded', function() { loadTemplates(); setInterval(loadTemplates, 30000); });
+    </script>
+</body>
+</html>

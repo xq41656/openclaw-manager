@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Manager - 总览</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.6; padding: 20px; }
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .section-header h2 { font-size: 18px; color: #f0f6fc; }
+        .btn { padding: 6px 12px; font-size: 12px; border-radius: 4px; cursor: pointer; border: none; background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+        .btn:hover { background: #30363d; }
+        .empty-state { padding: 40px 20px; text-align: center; color: #8b949e; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #30363d; }
+        th { background: #21262d; color: #8b949e; font-weight: 600; }
+        tr:hover { background: #21262d; }
+        .container-id { font-family: monospace; font-size: 12px; cursor: pointer; }
+        .image-tag { font-size: 12px; }
+        .status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status.running { background: rgba(35,134,54,0.15); color: #3fb950; }
+        .status.stopped { background: rgba(240,136,62,0.15); color: #f0883e; }
+        .status.creating { background: rgba(240,136,62,0.15); color: #f0883e; }
+        .status.error { background: rgba(218,54,51,0.15); color: #da3633; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status.running .status-dot { background: #3fb950; }
+        .status.stopped .status-dot { background: #f0883e; }
+        .status.creating .status-dot { background: #f0883e; }
+        .status.error .status-dot { background: #da3633; }
+    </style>
+</head>
+<body>
+    <div id="overview-content"><div class="empty-state">加载中...</div></div>
+    <script>
+        const API_BASE = '';
+        function getStatusClass(s) { const m = { running: 'running', stopped: 'stopped', creating: 'creating', error: 'error' }; return m[s] || 'stopped'; }
+        function getStatusText(s) { const m = { running: '运行中', stopped: '已停止', creating: '创建中', error: '错误' }; return m[s] || s; }
+        function formatPorts(p) {
+            if (!p || Object.keys(p).length === 0) return '-';
+            return Object.entries(p).map(([k, v]) => Array.isArray(v) ? v.map(h => h.HostPort + ':' + k.split('/')[0]).join(',') : k + ' > ' + v).join(', ');
+        }
+        async function loadContainers() {
+            const el = document.getElementById('overview-content');
+            el.innerHTML = '<div class="empty-state">加载中...</div>';
+            try {
+                const c = await fetch(API_BASE + '/api/containers/all').then(r => r.json());
+                if (c.length === 0) {
+                    el.innerHTML = '<div class="empty-state">暂无容器</div>';
+                } else {
+                    let tbody = '';
+                    c.forEach(x => {
+                        tbody += '<tr><td class="container-id" title="' + x.id + '">' + x.id + '</td><td>' + x.name + '</td><td class="image-tag">' + x.image + '</td><td><span class="status ' + getStatusClass(x.state) + '"><span class="status-dot"></span>' + getStatusText(x.state) + '</span></td><td>' + formatPorts(x.ports) + '</td></tr>';
+                    });
+                    el.innerHTML = '<div class="section"><div class="section-header"><h2>📦 Docker 容器</h2><button class="btn" onclick="loadContainers()">🔄 刷新</button></div><table><thead><tr><th>ID</th><th>名称</th><th>镜像</th><th>状态</th><th>端口</th></tr></thead><tbody>' + tbody + '</tbody></table></div>';
+                }
+            } catch(e) {
+                el.innerHTML = '<div class="empty-state">加载失败: ' + e.message + '</div>';
+            }
+        }
+        document.addEventListener('DOMContentLoaded', function() { loadContainers(); setInterval(loadContainers, 30000); });
+    </script>
+</body>
+</html>

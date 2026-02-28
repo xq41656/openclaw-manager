@@ -3,6 +3,7 @@ OpenClaw 服务 - 配置管理 + 健康检查
 """
 import json
 import requests
+import shlex
 from typing import Dict, Any, Optional
 from docker_service import DockerService
 from config import settings
@@ -25,8 +26,7 @@ class OpenClawService:
         """生成 OpenClaw 配置 (openclaw.json)"""
         config = {
             "gateway": {
-                "port": settings.GATEWAY_INTERNAL_PORT,
-                "host": "0.0.0.0"
+                "port": settings.GATEWAY_INTERNAL_PORT
             },
             "logging": {
                 "level": "info"
@@ -96,7 +96,6 @@ class OpenClawService:
         )
         
         # 使用 printf 写入（安全处理特殊字符）
-        import shlex
         config_escaped = shlex.quote(config_json)
         write_result = self.docker.exec_command(
             container_id,
@@ -109,13 +108,10 @@ class OpenClawService:
                 "error": f"写入配置失败: {write_result.get('output', '')}"
             }
         
-        # 重启容器使配置生效
-        restart_result = self.docker.restart_container(container_id)
-        
         return {
-            "success": restart_result["success"],
+            "success": True,
             "config_applied": True,
-            "restarted": restart_result["success"]
+            "gateway_started": False
         }
     
     def health_check(self, host: str, port: int) -> Dict[str, Any]:
