@@ -145,8 +145,8 @@
                     if (agent.status === 'running') html += '<button class="btn warning" onclick="showConfig(\'' + agent.id + '\')">⚙️ 配置</button>';
                     if (agent.status === 'running') {
                         html += '<div class="actions" style="justify-content:center;flex-wrap:wrap;gap:6px;">';
-                        html += '<button class="btn" onclick="stopClaw(\'' + agent.id + '\')">⏹️ 停止Claw</button>';
-                        html += '<button class="btn" onclick="startClaw(\'' + agent.id + '\')">▶️ 启动Claw</button>';
+                        html += '<button class="btn" id="startClawBtn-' + agent.id + '" onclick="startClaw(\'' + agent.id + '\')">▶️ 启动Claw</button>';
+                        html += '<button class="btn" id="stopClawBtn-' + agent.id + '" onclick="stopClaw(\'' + agent.id + '\')">⏹️ 停止Claw</button>';
                         html += '<button class="btn" onclick="resetConfig(\'' + agent.id + '\')">🔄 重置配置</button>';
                         html += '</div><button class="btn" onclick="stopAgent(\'' + agent.id + '\')" style="margin-top:6px;">⏹️ 停止</button>';
                     }
@@ -166,15 +166,22 @@
             
             const creatingAgents = agentsData.filter(a => a.status === 'creating');
             if (creatingAgents.length > 0) setTimeout(loadTemplates, 3000);
+            
+            // 检查每个运行中的容器的 OpenClaw 状态并显示对应按钮
+            agentsData.forEach(a => {
+                if (a.status === 'running' && a.container_id) {
+                    checkClawStateAndShowButtons(a.id, a.container_id);
+                }
+            });
         }
 
         async function startAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start', {method: 'POST'}); loadTemplates(); loadProjects(); }
 
         async function stopAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop', {method: 'POST'}); loadTemplates(); loadProjects(); }
 
-        async function startClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start-claw', {method: 'POST'}); alert('Claw 启动成功'); loadTemplates(); }
+        async function startClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start-claw', {method: 'POST'}); checkClawStateAndShowButtons(id, agentsData.find(a => a.id === id)?.container_id); alert('Claw 启动成功'); loadTemplates(); }
 
-        async function stopClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'}); alert('Claw 已停止'); loadTemplates(); }
+        async function stopClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'}); checkClawStateAndShowButtons(id, agentsData.find(a => a.id === id)?.container_id); alert('Claw 已停止'); loadTemplates(); }
 
         
         async function checkClawStatus(agentId, containerId) {
@@ -187,34 +194,41 @@
                 return null;
             }
         }
-
-        async function toggleClaw(id) {
-            try {
-                const agent = agentsData.find(a => a.id === id);
-                if (!agent || !agent.container_id) {
-                    alert('❌ 容器未就绪');
-                    return;
-                }
-                
-                const isRunning = await checkClawStatus(id, agent.container_id);
-                
-                if (isRunning === null) {
-                    alert('⚠️ 无法检查 OpenClaw 状态');
-                    return;
-                }
-                
+        
+        async function checkClawStateAndShowButtons(agentId, containerId) {
+            const isRunning = await checkClawStatus(agentId, containerId);
+            const startBtn = document.getElementById('startClawBtn-' + agentId);
+            const stopBtn = document.getElementById('stopClawBtn-' + agentId);
+            if (startBtn && stopBtn) {
                 if (isRunning) {
-                    await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'});
-                    alert('✅ OpenClaw 已停止');
+                    startBtn.style.display = 'none';
+                    stopBtn.style.display = 'inline-block';
                 } else {
-                    await fetch(API_BASE + '/api/agents/instances/' + id + '/start-claw', {method: 'POST'});
-                    alert('✅ OpenClaw 已启动');
+                    startBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
                 }
-                loadTemplates();
-            } catch(e) {
-                alert('❌ 操作失败: ' + e.message);
             }
         }
+        
+        async function startClawState(id) {
+            try {
+                await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'});
+                alert('✅ OpenClaw 已停止');
+                loadTemplates();
+            } catch(e) {
+                alert('❌ 停止失败: ' + e.message);
+            }
+        }
+        async function stopClawState(id) {
+            try {
+                await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'});
+                alert('✅ OpenClaw 已停止');
+                loadTemplates();
+            } catch(e) {
+                alert('❌ 停止失败: ' + e.message);
+            }
+        }
+        
         async function resetConfig(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/reset-openclaw', {method: 'POST'}); alert('配置已重置'); loadTemplates(); }
         
         async function viewLogs(id) {
