@@ -510,30 +510,31 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
         log(f"✅ 容器创建成功")
         log(f"容器ID: {container_id}")
         
-        # ========== 步骤3: 启动 OpenClaw 进程 ====
-        log("---- 步骤3: 启动 OpenClaw 进程 ----")
+        # ========== 步骤3: 启动 Gateway ==========
+        log("---- 步骤3: 启动 Gateway ----")
         try:
-            entrypoint_result = oc_service.docker.run_entrypoint(container_id)
-            log(f"OpenClaw 启动结果: {entrypoint_result}")
+            # 启动 Gateway
+            gateway_start_result = oc_service.docker.gateway_command(container_id, "start")
+            log(f"Gateway 启动结果: {gateway_start_result}")
             
-            if not entrypoint_result["success"]:
-                log(f"⚠️ OpenClaw 启动失败: {entrypoint_result.get('output', entrypoint_result.get('error', '未知错误'))}", "WARNING")
+            if not gateway_start_result.get("success"):
+                log(f"⚠️ Gateway 启动失败: {gateway_start_result.get('output', gateway_start_result.get('error', '未知错误'))}", "WARNING")
             else:
-                log("✅ OpenClaw 进程已启动")
+                log("✅ Gateway 已启动")
             
-            # 等待 OpenClaw 初始化
-            log("等待 OpenClaw 初始化...")
+            # 等待 Gateway 初始化
+            log("等待 Gateway 初始化...")
             time.sleep(5)
             
-            # 停止 OpenClaw
-            log("步骤3.2: 停止 OpenClaw 进程...")
-            stop_result = oc_service.docker.stop_openclaw_process(container_id)
-            log(f"停止结果: {stop_result}")
+            # 停止 Gateway
+            log("步骤3.2: 停止 Gateway...")
+            gateway_stop_result = oc_service.docker.gateway_command(container_id, "stop")
+            log(f"Gateway 停止结果: {gateway_stop_result}")
             
-            if not stop_result["success"]:
-                log(f"⚠️ 停止 OpenClaw 失败: {stop_result.get('error')}", "WARNING")
+            if not gateway_stop_result.get("success"):
+                log(f"⚠️ 停止 Gateway 失败: {gateway_stop_result.get('output', gateway_stop_result.get('error', '未知错误'))}", "WARNING")
             else:
-                log("✅ OpenClaw 进程已停止")
+                log("✅ Gateway 已停止")
             
             # 等待进程完全停止
             time.sleep(2)
