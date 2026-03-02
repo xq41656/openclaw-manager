@@ -787,6 +787,19 @@ def stop_claw(agent_id: str, db: Session = Depends(get_db)):
     return {"success": result.get("success", False), "message": f"Claw 停止完成", "result": result}
 
 
+
+
+@router.get("/containers/{container_id}/check-openclaw-status")
+def check_openclaw_status(container_id: str):
+    """检查容器内 OpenClaw 状态"""
+    try:
+        docker = DockerService()
+        result = docker.check_gateway_status(container_id)
+        # 检查结果中是否包含 gateway running
+        is_running = result.get("success", False) and "running" in str(result.get("status", "")).lower()
+        return {"is_running": is_running, "status": result}
+    except Exception as e:
+        return {"is_running": False, "error": str(e)}
 @router.post("/instances/{agent_id}/reset-openclaw")
 def reset_openclaw(agent_id: str, db: Session = Depends(get_db)):
     """重置 OpenClaw 配置"""

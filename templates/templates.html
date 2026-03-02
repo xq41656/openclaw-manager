@@ -176,6 +176,45 @@
 
         async function stopClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'}); alert('Claw 已停止'); loadTemplates(); }
 
+        
+        async function checkClawStatus(agentId, containerId) {
+            try {
+                const resp = await fetch(API_BASE + '/api/containers/' + containerId + '/check-openclaw-status');
+                const data = await resp.json();
+                return data.is_running;
+            } catch(e) {
+                console.error('检查 OpenClaw 状态失败:', e);
+                return null;
+            }
+        }
+
+        async function toggleClaw(id) {
+            try {
+                const agent = agentsData.find(a => a.id === id);
+                if (!agent || !agent.container_id) {
+                    alert('❌ 容器未就绪');
+                    return;
+                }
+                
+                const isRunning = await checkClawStatus(id, agent.container_id);
+                
+                if (isRunning === null) {
+                    alert('⚠️ 无法检查 OpenClaw 状态');
+                    return;
+                }
+                
+                if (isRunning) {
+                    await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'});
+                    alert('✅ OpenClaw 已停止');
+                } else {
+                    await fetch(API_BASE + '/api/agents/instances/' + id + '/start-claw', {method: 'POST'});
+                    alert('✅ OpenClaw 已启动');
+                }
+                loadTemplates();
+            } catch(e) {
+                alert('❌ 操作失败: ' + e.message);
+            }
+        }
         async function resetConfig(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/reset-openclaw', {method: 'POST'}); alert('配置已重置'); loadTemplates(); }
         
         async function viewLogs(id) {
