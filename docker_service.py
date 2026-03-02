@@ -2,6 +2,7 @@
 Docker 服务 - 容器生命周期管理 + 端口池
 """
 import docker
+import time
 from docker.errors import NotFound, APIError
 from typing import List, Optional, Dict, Any, Union
 from typing import List, Optional, Dict, Any
@@ -416,5 +417,93 @@ with open('/root/.openclaw/openclaw.json', 'w') as f:
                 return {"success": True, "message": "配置文件已复制"}
             return {"success": False, "error": write_result.get("output", "写入失败")}
             
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def check_gateway_status(self, container_id: str) -> Dict[str, Any]:
+        """检查容器内 OpenClaw (Gateway) 是否正在运行"""
+        try:
+            container = self.client.containers.get(container_id)
+            
+            result = container.exec_run(
+                ["cat", "/root/.openclaw/status"],
+                stdout=True,
+                stderr=True
+            )
+            
+            if result.exit_code != 0:
+                return {"success": False, "status": "stopped"}
+            
+            status_content = result.output.decode('utf-8').strip()
+            
+            if "running" in status_content.lower():
+                return {"success": True, "status": "running"}
+            else:
+                return {"success": False, "status": "stopped"}
+                
+        except NotFound:
+            return {"success": False, "error": "容器不存在"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def gateway_command(self, container_id: str, command: str) -> Dict[str, Any]:
+        """执行 Gateway 命令 (start/stop/restart/status)"""
+        try:
+            container = self.client.containers.get(container_id)
+            
+            if command == "stop":
+                # 停止 Gateway：直接 kill openclaw-gateway 进程
+                result = container.exec_run(
+                    ["pkill", "-f", "openclaw-gateway"],
+                    stdout=True,
+                    stderr=True
+                )
+                output = result.output.decode('utf-8') if result.output else ""
+                return {
+                    "success": True,
+                    "exit_code": result.exit_code,
+                    "output": output if output else "Gateway process stopped"
+                }
+            
+            elif command in ["start", "restart"]:
+                # 启动/重启 Gateway：先 kill 旧进程，再启动新进程
+                container.exec_run(
+                    ["pkill", "-f", "openclaw-gateway"],
+                    stdout=False,
+                    stderr=False
+                )
+                # 等待一小会儿让旧进程清理
+                time.sleep(1)
+                # 启动新 Gateway 进程（后台运行）
+                result = container.exec_run(
+                    ["openclaw", "gateway"],
+                    stdout=True,
+                    stderr=True,
+                    demux=True,
+                   detach=True
+                )
+                return {
+                    "success": True,
+                    "exit_code": 0,
+                    "output": f"Gateway {command}ed"
+                }
+            
+            else:
+                # status 命令
+                result = container.exec_run(
+                    ["openclaw", "gateway", command],
+                    stdout=True,
+                    stderr=True,
+                    demux=True
+                )
+                
+                stdout, stderr = result.output
+                output = (stdout.decode('utf-8') if stdout else '') + (stderr.decode('utf-8') if stderr else '')
+                
+                return {
+                    "success": result.exit_code == 0,
+                    "exit_code": result.exit_code,
+                    "output": output
+                }
         except Exception as e:
             return {"success": False, "error": str(e)}

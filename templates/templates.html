@@ -186,7 +186,7 @@
         
         async function checkClawStatus(agentId, containerId) {
             try {
-                const resp = await fetch(API_BASE + '/api/containers/' + containerId + '/check-openclaw-status');
+                const resp = await fetch(API_BASE + '/api/agents/containers/' + containerId + '/check-openclaw-status');
                 const data = await resp.json();
                 return data.is_running;
             } catch(e) {

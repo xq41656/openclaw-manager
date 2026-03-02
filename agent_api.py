@@ -509,15 +509,10 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
         container_id = result["container_id"]
         log(f"✅ 容器创建成功")
         log(f"容器ID: {container_id}")
-        save_logs()  # 保存日志供用户查看
         
-        # ========== 步骤3: 启动 OpenClaw、替换配置、重启（不影响模板创建） ==========
-        log("---- 步骤3: 初始化 OpenClaw（后台操作，不影响模板创建） ----")
-        log("⚠️ 此操作失败不影响模板创建状态")
-        
+        # ========== 步骤3: 启动 OpenClaw 进程 ====
+        log("---- 步骤3: 启动 OpenClaw 进程 ----")
         try:
-            # 启动 OpenClaw 生成默认配置
-            log("步骤3.1: 启动 OpenClaw 进程...")
             entrypoint_result = oc_service.docker.run_entrypoint(container_id)
             log(f"OpenClaw 启动结果: {entrypoint_result}")
             
@@ -729,58 +724,44 @@ def restart_agent(agent_id: str, db: Session = Depends(get_db)):
 
 @router.post("/instances/{agent_id}/start-claw")
 def start_claw(agent_id: str, db: Session = Depends(get_db)):
-    """启动 Claw（执行 entrypoint 脚本）"""
+    """启动 Gateway (原 start-claw)"""
     agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="智能体不存在")
     if not agent.container_id:
         raise HTTPException(status_code=400, detail="容器尚未创建")
     
-    oc_service = OpenClawService()
-    
-    # 复制配置文件到容器
-    config_copy_result = oc_service.docker.copy_file_to_container(
-        agent.container_id,
-        "/root/.openclaw/workspace/openclaw-manager/openclaw.json",
-        "/root/.openclaw/openclaw.json"
-    )
-    
-    if not config_copy_result.get("success"):
-        return {"success": False, "message": f"配置文件复制失败: {config_copy_result.get('error', '未知错误')}", "result": config_copy_result}
-    
-    # 执行 entrypoint 脚本
-    entrypoint_result = oc_service.docker.run_entrypoint(agent.container_id)
+    result = docker_service.gateway_command(agent.container_id, "start")
     
     audit = AuditService(db)
     audit.log(
         action="start_claw",
         entity_type="agent",
         entity_id=agent_id,
-        description=f"启动 Claw: {agent.name}",
+        description=f"启动 Claw (Gateway): {agent.name}",
         agent_id=agent_id
     )
     
-    return {"success": entrypoint_result.get("success", False), "message": f"Claw 启动完成", "result": entrypoint_result}
+    return {"success": result.get("success", False), "message": f"Claw 启动完成", "result": result}
 
 
 @router.post("/instances/{agent_id}/stop-claw")
 def stop_claw(agent_id: str, db: Session = Depends(get_db)):
-    """停止 Claw"""
+    """停止 Gateway (原 stop-claw)"""
     agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="智能体不存在")
     if not agent.container_id:
         raise HTTPException(status_code=400, detail="容器尚未创建")
     
-    result = oc_service.docker.stop_openclaw_process(agent.container_id)
+    result = docker_service.gateway_command(agent.container_id, "stop")
     
-    # 审计日志
     audit = AuditService(db)
     audit.log(
         action="stop_claw",
         entity_type="agent",
         entity_id=agent_id,
-        description=f"停止 Claw: {agent.name}",
+        description=f"停止 Claw (Gateway): {agent.name}",
         agent_id=agent_id
     )
     
@@ -791,15 +772,127 @@ def stop_claw(agent_id: str, db: Session = Depends(get_db)):
 
 @router.get("/containers/{container_id}/check-openclaw-status")
 def check_openclaw_status(container_id: str):
-    """检查容器内 OpenClaw 状态"""
+    """检查容器内 OpenClaw (Gateway) 状态"""
     try:
         docker = DockerService()
-        result = docker.check_gateway_status(container_id)
-        # 检查结果中是否包含 gateway running
-        is_running = result.get("success", False) and "running" in str(result.get("status", "")).lower()
-        return {"is_running": is_running, "status": result}
+        result = docker.gateway_command(container_id, "status")
+        
+        # 解析 Gateway 状态
+        output = result.get("output", "")
+        is_running = False
+        
+        # 尝试通过 exit_code 判断
+        if result.get("exit_code") == 0:
+            output_lower = output.lower()
+            
+            # 优先检查 rpc probe 状态
+            has_rpc_failed = "rpc probe: failed" in output_lower
+            has_rpc_ok = "rpc probe: ok" in output_lower
+            
+            # 如果 RPC 探测失败，认为未运行
+            if has_rpc_failed:
+                is_running = False
+            # 如果 RPC 探测成功，认为正在运行
+            elif has_rpc_ok:
+                is_running = True
+            # 否则检查是否有 gateway 配置信息
+            elif "gateway:" in output_lower:
+                is_running = True
+            # 也检查运行时状态
+            elif "runtime: unknown" in output_lower or "running" in output_lower:
+                is_running = True
+        else:
+            # 命令失败，认为未运行
+            is_running = False
+        
+        return {"is_running": is_running, "status": result, "output": output}
     except Exception as e:
         return {"is_running": False, "error": str(e)}
+
+
+@router.get("/instances/{agent_id}/gateway/status")
+def gateway_status(agent_id: str, db: Session = Depends(get_db)):
+    """查看 Gateway 状态"""
+    agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="容器尚未创建")
+    
+    result = docker_service.gateway_command(agent.container_id, "status")
+    
+    return {"success": result.get("success", False), "status": result}
+
+
+@router.post("/instances/{agent_id}/gateway/start")
+def gateway_start(agent_id: str, db: Session = Depends(get_db)):
+    """启动 Gateway"""
+    agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="容器尚未创建")
+    
+    result = docker_service.gateway_command(agent.container_id, "start")
+    
+    audit = AuditService(db)
+    audit.log(
+        action="gateway_start",
+        entity_type="agent",
+        entity_id=agent_id,
+        description=f"启动 Gateway: {agent.name}",
+        agent_id=agent_id
+    )
+    
+    return {"success": result.get("success", False), "message": f"Gateway 启动完成", "result": result}
+
+
+@router.post("/instances/{agent_id}/gateway/stop")
+def gateway_stop(agent_id: str, db: Session = Depends(get_db)):
+    """停止 Gateway"""
+    agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="容器尚未创建")
+    
+    result = docker_service.gateway_command(agent.container_id, "stop")
+    
+    audit = AuditService(db)
+    audit.log(
+        action="gateway_stop",
+        entity_type="agent",
+        entity_id=agent_id,
+        description=f"停止 Gateway: {agent.name}",
+        agent_id=agent_id
+    )
+    
+    return {"success": result.get("success", False), "message": f"Gateway 停止完成", "result": result}
+
+
+@router.post("/instances/{agent_id}/gateway/restart")
+def gateway_restart(agent_id: str, db: Session = Depends(get_db)):
+    """重启 Gateway"""
+    agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="容器尚未创建")
+    
+    result = docker_service.gateway_command(agent.container_id, "restart")
+    
+    audit = AuditService(db)
+    audit.log(
+        action="gateway_restart",
+        entity_type="agent",
+        entity_id=agent_id,
+        description=f"重启 Gateway: {agent.name}",
+        agent_id=agent_id
+    )
+    
+    return {"success": result.get("success", False), "message": f"Gateway 重启完成", "result": result}
+
+
 @router.post("/instances/{agent_id}/reset-openclaw")
 def reset_openclaw(agent_id: str, db: Session = Depends(get_db)):
     """重置 OpenClaw 配置"""
