@@ -143,7 +143,13 @@
                     html += '<div class="actions" style="justify-content:center"><button class="btn" onclick="viewLogs(\'' + agent.id + '\')">📄 日志</button>';
                     if (agent.status === 'running' && agent.host_port) html += '<button class="btn primary" onclick="openUI(\'' + agent.host_port + '\')">🌐 打开 UI</button>';
                     if (agent.status === 'running') html += '<button class="btn warning" onclick="showConfig(\'' + agent.id + '\')">⚙️ 配置</button>';
-                    if (agent.status === 'running') html += '<button class="btn" onclick="stopAgent(\'' + agent.id + '\')">⏹️ 停止</button>';
+                    if (agent.status === 'running') {
+                        html += '<div class="actions" style="justify-content:center;flex-wrap:wrap;gap:6px;">';
+                        html += '<button class="btn" onclick="stopClaw(\'' + agent.id + '\')">⏹️ 停止Claw</button>';
+                        html += '<button class="btn" onclick="startClaw(\'' + agent.id + '\')">▶️ 启动Claw</button>';
+                        html += '<button class="btn" onclick="resetConfig(\'' + agent.id + '\')">🔄 重置配置</button>';
+                        html += '</div><button class="btn" onclick="stopAgent(\'' + agent.id + '\')" style="margin-top:6px;">⏹️ 停止</button>';
+                    }
 
                     else if (agent.status === 'stopped' || agent.status === 'error') {
                         html += '<button class="btn success" onclick="startAgent(\'' + agent.id + '\')">▶️ 启动容器</button>';
@@ -165,6 +171,12 @@
         async function startAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start', {method: 'POST'}); loadTemplates(); loadProjects(); }
 
         async function stopAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop', {method: 'POST'}); loadTemplates(); loadProjects(); }
+
+        async function startClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start-claw', {method: 'POST'}); alert('Claw 启动成功'); loadTemplates(); }
+
+        async function stopClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'}); alert('Claw 已停止'); loadTemplates(); }
+
+        async function resetConfig(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/reset-openclaw', {method: 'POST'}); alert('配置已重置'); loadTemplates(); }
         
         async function viewLogs(id) {
             currentLogAgentId = id;

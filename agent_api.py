@@ -762,6 +762,53 @@ def start_claw(agent_id: str, db: Session = Depends(get_db)):
     
     return {"success": entrypoint_result.get("success", False), "message": f"Claw 启动完成", "result": entrypoint_result}
 
+
+@router.post("/instances/{agent_id}/stop-claw")
+def stop_claw(agent_id: str, db: Session = Depends(get_db)):
+    """停止 Claw"""
+    agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="容器尚未创建")
+    
+    result = oc_service.docker.stop_openclaw_process(agent.container_id)
+    
+    # 审计日志
+    audit = AuditService(db)
+    audit.log(
+        action="stop_claw",
+        entity_type="agent",
+        entity_id=agent_id,
+        description=f"停止 Claw: {agent.name}",
+        agent_id=agent_id
+    )
+    
+    return {"success": result.get("success", False), "message": f"Claw 停止完成", "result": result}
+
+
+@router.post("/instances/{agent_id}/reset-openclaw")
+def reset_openclaw(agent_id: str, db: Session = Depends(get_db)):
+    """重置 OpenClaw 配置"""
+    agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="智能体不存在")
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="容器尚未创建")
+    
+    result = oc_service.docker.copy_openclaw_config_to_container(agent.container_id)
+    
+    # 审计日志
+    audit = AuditService(db)
+    audit.log(
+        action="reset_openclaw",
+        entity_type="agent",
+        entity_id=agent_id,
+        description=f"重置 OpenClaw 配置: {agent.name}",
+        agent_id=agent_id
+    )
+    
+    return {"success": result.get("success", False), "message": f"OpenClaw 配置重置完成", "result": result}
 @router.get("/instances/{agent_id}/logs")
 def get_agent_logs(agent_id: str, tail: int = 200, db: Session = Depends(get_db)):
     """获取智能体容器日志"""
