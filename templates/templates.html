@@ -150,9 +150,9 @@
                         html += '</div><button class="btn" onclick="stopAgent(\'' + agent.id + '\', this)" style="margin-top:6px;">⏹️ 停止</button>';
                     }
                     if (agent.status === 'stopped' || agent.status === 'error') {
-                        html += '<button class="btn success" onclick="startAgent(\'' + agent.id + \'\', this)">▶️ 启动容器</button>';
+                        html += '<button class="btn success" onclick="startAgent(\'' + agent.id + '\', this)">▶️ 启动容器</button>';
                     }
-                    else if (agent.status === 'creating') {
+                    if (agent.status === 'creating') {
                         html += '<button class="btn" disabled>⏳ 创建中</button>';
                     }
                     else html += '<button class="btn" disabled>⏳ 等待中</button>';
