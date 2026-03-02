@@ -3,6 +3,7 @@ Docker 服务 - 容器生命周期管理 + 端口池
 """
 import docker
 from docker.errors import NotFound, APIError
+from typing import List, Optional, Dict, Any, Union
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from database import PortAllocation, AgentInstance, AuditLog
@@ -125,6 +126,38 @@ class DockerService:
     ) -> Dict[str, Any]:
         """创建并启动 OpenClaw 容器"""
         try:
+            # 检查端口是否已被 Docker 使用
+            try:
+                containers = self.client.containers.list(all=True)
+                if containers:
+                    for c in containers:
+                        # 获取容器详细信息以获取端口映射
+                        attrs = c.attrs
+                        ports = attrs.get('NetworkSettings', {}).get('Ports', {})
+                        if ports:
+                            for container_port, host_ips in ports.items():
+                                if host_ips:
+                                    # host_ips 可能是列表或字符串
+                                    if isinstance(host_ips, list):
+                                        for host_ip_info in host_ips:
+                                            public_port = host_ip_info.get('HostPort') if isinstance(host_ip_info, dict) else None
+                                            if public_port and int(public_port) == host_port:
+                                                return {
+                                                    "success": False,
+                                                    "error": f"端口 {host_port} 已被容器 {c.name} ({c.id[:12]}) 占用"
+                                                }
+                                    elif isinstance(host_ips, dict):
+                                        public_port = host_ips.get('HostPort')
+                                        if public_port and int(public_port) == host_port:
+                                            return {
+                                                "success": False,
+                                                "error": f"端口 {host_port} 已被容器 {c.name} ({c.id[:12]}) 占用"
+                                            }
+            except Exception as e:
+                # 忽略端口检查错误，继续创建容器
+                print(f"端口检查异常: {e}")
+                pass
+            
             # 端口映射: 宿主机 host_port -> 容器 18789
             ports = {
                 f"{settings.GATEWAY_INTERNAL_PORT}/tcp": ("0.0.0.0", host_port)
@@ -303,14 +336,22 @@ class DockerService:
             return {"success": False, "error": str(e)}
     
     def run_entrypoint(self, container_id: str) -> Dict[str, Any]:
-        """在容器内执行 openclaw-entrypoint.sh 脚本"""
+        """在容器内执行 openclaw-entrypoint.sh 脚本（后台运行 gateway）"""
         try:
             container = self.client.containers.get(container_id)
-            result = container.exec_run("/usr/local/bin/openclaw-entrypoint.sh", stdout=True, stderr=True, detach=False)
+            # 重新加载并运行 entrypoint 脚本
+            result = container.exec_run(
+                ["sh", "-c", "source /usr/local/bin/openclaw-entrypoint.sh"],
+                stdout=True,
+                stderr=True,
+                demux=True
+            )
+            stdout, stderr = result.output
+            output = (stdout.decode('utf-8') if stdout else '') + (stderr.decode('utf-8') if stderr else '')
             return {
-                "success": result.exit_code == 0,
+                "success": True,
                 "exit_code": result.exit_code,
-                "output": result.output.decode('utf-8') if result.output else ""
+                "output": output
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -327,5 +368,53 @@ class DockerService:
                 "exit_code": result.exit_code,
                 "output": result.output.decode('utf-8') if result.output else ""
             }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def stop_openclaw_process(self, container_id: str) -> Dict[str, Any]:
+        """停止容器内的 openclaw 进程"""
+        try:
+            # 使用 pkill 停止所有 openclaw 进程
+            result = self.exec_command(container_id, ["pkill", "-f", "openclaw"])
+            if result["success"]:
+                return {"success": True, "message": "openclaw 进程已停止"}
+            return {"success": False, "error": result.get("output", "停止进程失败")}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def copy_openclaw_config_to_container(self, container_id: str) -> Dict[str, Any]:
+        """将程序目录下的 openclaw.json 复制到容器"""
+        import os
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "openclaw.json")
+            
+            if not os.path.exists(config_path):
+                return {"success": False, "error": f"配置文件不存在: {config_path}"}
+            
+            with open(config_path, 'rb') as f:
+                config_data = f.read()
+            
+            container = self.client.containers.get(container_id)
+            
+            # 创建目录
+            result = self.exec_command(container_id, ["mkdir", "-p", "/root/.openclaw"])
+            if not result["success"]:
+                return {"success": False, "error": "创建目录失败"}
+            
+            # 直接使用 exec 写入文件
+            import json
+            config_str = config_data.decode('utf-8')
+            python_code = f"""
+import json
+config = {json.dumps(json.loads(config_str), indent=2)}
+with open('/root/.openclaw/openclaw.json', 'w') as f:
+    json.dump(config, f, indent=2)
+"""
+            write_result = self.exec_command(container_id, ["python3", "-c", python_code])
+            
+            if write_result["success"]:
+                return {"success": True, "message": "配置文件已复制"}
+            return {"success": False, "error": write_result.get("output", "写入失败")}
+            
         except Exception as e:
             return {"success": False, "error": str(e)}

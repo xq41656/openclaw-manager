@@ -26,7 +26,12 @@ class OpenClawService:
         """生成 OpenClaw 配置 (openclaw.json)"""
         config = {
             "gateway": {
-                "port": settings.GATEWAY_INTERNAL_PORT
+                "port": settings.GATEWAY_INTERNAL_PORT,
+                "mode": "local",
+                "bind": "lan",
+                "controlUi": {
+                    "dangerouslyAllowHostHeaderOriginFallback": True
+                }
             },
             "logging": {
                 "level": "info"
@@ -34,9 +39,15 @@ class OpenClawService:
         }
         
         if gateway_token:
-            config["gateway"]["token"] = gateway_token
+            config["gateway"]["auth"] = {
+                "mode": "token",
+                "token": gateway_token
+            }
         if gateway_password:
-            config["gateway"]["password"] = gateway_password
+            config["gateway"]["auth"] = {
+                "mode": "password",
+                "password": gateway_password
+            }
         
         # AI 提供商配置
         if provider:
@@ -198,3 +209,60 @@ class OpenClawService:
                 "success": False,
                 "error": "无法读取配置"
             }
+    
+    def reset_config_then_restore(self, container_id: str) -> Dict[str, Any]:
+        """启动容器 → 停止 → 复制 openclaw.json → 重启"""
+        import time
+        
+        try:
+            # 1. 启动 openclaw 进程让它生成默认配置
+            log("步骤1: 启动 openclaw 生成默认配置...")
+            entrypoint_result = self.docker.run_entrypoint(container_id)
+            log(f"entrypoint 执行结果: {entrypoint_result}")
+            
+            if not entrypoint_result["success"]:
+                log(f"⚠️ entrypoint 执行失败: {entrypoint_result.get('error')}", "WARNING")
+            
+            # 等待 openclaw 生成默认配置
+            log("等待 openclaw 生成默认配置...")
+            time.sleep(5)
+            
+            # 2. 停止 openclaw 进程
+            log("步骤2: 停止 openclaw 进程...")
+            stop_result = self.docker.stop_openclaw_process(container_id)
+            log(f"停止进程结果: {stop_result}")
+            
+            # 等待进程完全停止
+            time.sleep(2)
+            
+            # 3. 复制 openclaw.json 到容器
+            log("步骤3: 复制 openclaw.json 到容器...")
+            copy_result = self.docker.copy_openclaw_config_to_container(container_id)
+            log(f"复制结果: {copy_result}")
+            
+            if not copy_result["success"]:
+                return {
+                    "success": False,
+                    "error": f"复制配置失败: {copy_result.get('error')}"
+                }
+            
+            log("✅ 配置文件已复制")
+            
+            # 4. 启动容器使配置生效
+            log("步骤4: 启动容器...")
+            restart_result = self.docker.restart_container(container_id)
+            log(f"重启结果: {restart_result}")
+            
+            if restart_result["success"]:
+                time.sleep(3)  # 等待容器启动完成
+                return {
+                    "success": True,
+                    "message": "配置已重置并应用"
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": restart_result.get("error", "重启失败")
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}

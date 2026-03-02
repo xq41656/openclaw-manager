@@ -144,7 +144,7 @@
                     if (agent.status === 'running' && agent.host_port) html += '<button class="btn primary" onclick="openUI(\'' + agent.host_port + '\')">🌐 打开 UI</button>';
                     if (agent.status === 'running') html += '<button class="btn warning" onclick="showConfig(\'' + agent.id + '\')">⚙️ 配置</button>';
                     if (agent.status === 'running') html += '<button class="btn" onclick="stopAgent(\'' + agent.id + '\')">⏹️ 停止</button>';
-                    if (agent.status === 'running') html += '<button class="btn" onclick="startClaw(\'' + agent.id + '\')">🐾 启动 Claw</button>';
+
                     else if (agent.status === 'stopped' || agent.status === 'error') {
                         html += '<button class="btn success" onclick="startAgent(\'' + agent.id + '\')">▶️ 启动容器</button>';
                     }
@@ -163,7 +163,7 @@
         }
 
         async function startAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start', {method: 'POST'}); loadTemplates(); loadProjects(); }
-        async function startClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start-claw', {method: 'POST'}); loadTemplates(); loadProjects(); }
+
         async function stopAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop', {method: 'POST'}); loadTemplates(); loadProjects(); }
         
         async function viewLogs(id) {
@@ -298,7 +298,7 @@
             console.log('提交创建模板:', { name, image, hostPort });
             if (!name) { alert('请输入模板名称'); return; }
             if (!image) { alert('请选择 Docker 镜像'); return; }
-            if (hostPort) { const check = checkPortAvailable(hostPort); if (!check.valid) { document.getElementById('port-error').textContent = check.msg; document.getElementById('port-error').style.display = 'block'; return; } }
+            if (hostPort) { const check = await checkPortAvailableAsync(hostPort); if (!check.valid) { alert('❌ 端口检查失败: ' + check.msg); return; } }
             const payload = { name, description, image, host_port: hostPort ? parseInt(hostPort) : null };
             try {
                 const resp = await fetch(API_BASE + '/api/agents/templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -327,6 +327,16 @@
         function findAvailablePort() { for (let port = 30001; port <= 30500; port++) { if (!usedPorts.includes(port)) { return port; } } return null; }
         
         function checkPortAvailable(port) { if (usedPorts.includes(parseInt(port))) { return { valid: false, msg: '端口已被占用' }; } return { valid: true }; }
+        
+        async function checkPortAvailableAsync(port) {
+            try {
+                const resp = await fetch(API_BASE + '/api/agents/ports/check?port=' + port);
+                if (!resp.ok) { return { valid: false, msg: '检查端口失败' }; }
+                const data = await resp.json();
+                if (!data.available) { return { valid: false, msg: data.message || '端口已被占用' }; }
+                return { valid: true };
+            } catch(e) { return { valid: false, msg: '检查端口失败: ' + e.message }; }
+        }
         
         async function loadProjects() { const p = await fetch(API_BASE + '/api/projects').then(r => r.json()); console.log('projects loaded:', p); }
 

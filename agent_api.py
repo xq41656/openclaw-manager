@@ -428,9 +428,10 @@ def create_agent(agent: AgentCreate, background_tasks: BackgroundTasks, db: Sess
 
 def _create_container_task(agent_id: str, container_name: str, image: str, host_port: int, config: dict):
     """后台任务：创建 Docker 容器"""
-    from database import SessionLocal, AgentInstance
+    from database import SessionLocal, AgentInstance, AuditLog
     from datetime import datetime
     import traceback
+    import time
     from docker_service import DockerService
     from openclaw_service import OpenClawService
     
@@ -442,42 +443,46 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
         logs.append(line)
         print(line)
     
+    def save_logs(error_msg: str = None, status: str = None):
+        """保存日志到数据库"""
+        agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
+        if agent:
+            agent.creation_logs = str("\n".join(logs))
+            if status:
+                agent.status = status
+            if error_msg:
+                if not agent.config:
+                    agent.config = {}
+                agent.config["error"] = error_msg
+            db.commit()
+    
     db = SessionLocal()
     docker_service = DockerService()
     oc_service = OpenClawService()
     
-    def save_logs():
-        """保存日志到数据库"""
-        agent = db.query(AgentInstance).filter(AgentInstance.id == agent_id).first()
-        if agent:
-            agent.creation_logs = "\n".join(logs)
-            db.commit()
-    
     try:
         log("=" * 60)
-        log(f"开始创建容器: {container_name}")
+        log("🚀 开始创建容器")
         log(f"Agent ID: {agent_id}")
+        log(f"容器名称: {container_name}")
         log(f"主机端口: {host_port}")
         log(f"镜像: {image}")
-        log(f"容器端口: 18789 (固定)")
-        save_logs()
         
-        # 检查本地镜像
-        log("步骤1: 检查/拉取镜像...")
+        # ========== 步骤1: 检查本地镜像（不拉取远程） ==========
+        log("---- 步骤1: 检查本地镜像（不拉取远程） ----")
         pull_result = docker_service.pull_image(image)
         log(f"镜像检查结果: {pull_result}")
-        save_logs()
         
         if not pull_result["success"]:
-            error_msg = pull_result.get("error", "")
+            error_msg = pull_result.get("error", "未知错误")
+            log(f"❌ 镜像检查失败: {error_msg}", "ERROR")
             if "no such host" in error_msg or "dial tcp" in error_msg or "resolve" in error_msg:
-                log("❌ 网络/DNS 错误，无法拉取镜像", "ERROR")
-                log(f"错误详情: {error_msg}", "ERROR")
-                _update_agent_status(db, agent_id, "error", error="无法拉取镜像: 网络/DNS 问题。请检查网络连接或手动导入镜像。")
+                log("错误原因: 网络/DNS 问题", "ERROR")
+                error_msg = "无法检查镜像: 网络/DNS 问题。请检查网络连接或手动导入镜像。"
             else:
-                log(f"❌ 拉取镜像失败: {error_msg}", "ERROR")
-                _update_agent_status(db, agent_id, "error", error=f"拉取镜像失败: {error_msg}")
-            save_logs()
+                log("错误原因: 本地镜像不存在，且不允许拉取远程镜像", "ERROR")
+                error_msg = f"本地镜像不存在，且不允许拉取远程镜像: {image}"
+            save_logs(error_msg=error_msg, status="error")
             return
         
         if pull_result.get("from_local"):
@@ -485,80 +490,105 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
         else:
             log("✅ 镜像拉取成功")
         
-        # 创建容器
-        log(f"步骤2: 创建容器 (名称: {container_name}, 端口映射: {host_port}->18789)...")
-        save_logs()
-        
+        # ========== 步骤2: 创建并启动容器 ==========
+        log("---- 步骤2: 创建并启动容器 ----")
+        log(f"创建容器: {container_name}, 端口映射: {host_port} -> 18789")
         result = docker_service.create_container(
             name=container_name,
             image=image,
             host_port=host_port
         )
         log(f"创建结果: {result}")
-        save_logs()
         
-        if result["success"]:
-            container_id = result["container_id"]
-            log(f"✅ 容器创建成功")
-            log(f"容器ID: {container_id}")
+        if not result["success"]:
+            error_msg = result.get("error", "未知错误")
+            log(f"❌ 容器创建失败: {error_msg}", "ERROR")
+            save_logs(error_msg=error_msg, status="error")
+            return
+        
+        container_id = result["container_id"]
+        log(f"✅ 容器创建成功")
+        log(f"容器ID: {container_id}")
+        
+        # ========== 步骤3: 启动 OpenClaw、替换配置、重启（不影响模板创建） ==========
+        log("---- 步骤3: 初始化 OpenClaw（后台操作，不影响模板创建） ----")
+        log("⚠️ 此操作失败不影响模板创建状态")
+        
+        try:
+            # 启动 OpenClaw 生成默认配置
+            log("步骤3.1: 启动 OpenClaw 进程...")
+            entrypoint_result = oc_service.docker.run_entrypoint(container_id)
+            log(f"OpenClaw 启动结果: {entrypoint_result}")
             
-            # 等待容器启动（openclaw 已自启动）
-            import time
-            log("等待容器启动...")
-            time.sleep(5)  # 等待5秒让openclaw启动完成
-            save_logs()
-            
-            # 应用配置
-            log("步骤3: 应用 OpenClaw 配置...")
-            save_logs()
-            
-            # 如果 config 为空，生成默认配置
-            if not config:
-                config = oc_service.generate_config()
-            config_result = oc_service.apply_config_to_container(container_id, config)
-            log(f"配置应用结果: {config_result}")
-            
-            if config_result.get("success"):
-                log("✅ 配置应用成功")
+            if not entrypoint_result["success"]:
+                log(f"⚠️ OpenClaw 启动失败: {entrypoint_result.get('output', entrypoint_result.get('error', '未知错误'))}", "WARNING")
             else:
-                log(f"⚠️ 配置应用失败: {config_result.get('error')}", "WARNING")
+                log("✅ OpenClaw 进程已启动")
             
-            # 重启容器使配置生效（openclaw只在启动时读取配置）
-            log("步骤3.5: 重启容器使配置生效...")
-            save_logs()
+            # 等待 OpenClaw 初始化
+            log("等待 OpenClaw 初始化...")
+            time.sleep(5)
+            
+            # 停止 OpenClaw
+            log("步骤3.2: 停止 OpenClaw 进程...")
+            stop_result = oc_service.docker.stop_openclaw_process(container_id)
+            log(f"停止结果: {stop_result}")
+            
+            if not stop_result["success"]:
+                log(f"⚠️ 停止 OpenClaw 失败: {stop_result.get('error')}", "WARNING")
+            else:
+                log("✅ OpenClaw 进程已停止")
+            
+            # 等待进程完全停止
+            time.sleep(2)
+            
+            # 替换配置文件
+            log("步骤3.3: 替换配置文件 openclaw.json...")
+            copy_result = oc_service.docker.copy_openclaw_config_to_container(container_id)
+            log(f"配置替换结果: {copy_result}")
+            
+            if not copy_result["success"]:
+                error_msg = copy_result.get("error", "未知错误")
+                log(f"❌ 配置文件替换失败: {error_msg}", "ERROR")
+                log("⚠️ 继续更新模板状态...")
+                _update_agent_status(db, agent_id, "running", container_id=container_id, container_name=container_name)
+                log("✅ 状态更新为 running")
+                log("=" * 60)
+                log(f"🎉 模板创建完成！访问地址: http://<服务器IP>:{host_port}")
+                return
+            
+            log("✅ 配置文件已替换")
+            
+            # 重启容器
+            log("步骤3.4: 重启容器...")
             restart_result = docker_service.restart_container(container_id)
-            if restart_result["success"]:
-                log("✅ 容器重启成功")
+            log(f"重启结果: {restart_result}")
+            
+            if not restart_result["success"]:
+                log(f"⚠️ 重启失败: {restart_result.get('error')}", "WARNING")
             else:
-                log(f"⚠️ 容器重启失败: {restart_result.get('error')}", "WARNING")
+                log("✅ 容器已重启")
             
-            # 等待容器重启完成
-            log("等待容器重启完成...")
             time.sleep(3)
-            save_logs()
+            save_logs()  # OpenClaw初始化过程中出错，记录日志供用户查看
             
-            # 更新数据库状态
-            log("步骤4: 更新数据库状态为 running...")
-            _update_agent_status(
-                db, agent_id, "running",
-                container_id=container_id,
-                container_name=container_name
-            )
-            log("✅ 状态更新成功")
-            log(f"🎉 容器创建完成！访问地址: http://<服务器IP>:{host_port}")
-        else:
-            error = result.get("error", "未知错误")
-            log(f"❌ 容器创建失败: {error}", "ERROR")
-            _update_agent_status(db, agent_id, "error", error=error)
+        except Exception as e:
+            error_msg = str(e)
+            log(f"⚠️ 初始化 OpenClaw 过程出错: {error_msg}", "WARNING")
+            log("⚠️ 继续更新模板状态...")
         
-        save_logs()
+        # ========== 步骤4: 更新实例状态为 running ==========
+        log("---- 步骤4: 更新实例状态 ----")
+        _update_agent_status(db, agent_id, "running", container_id=container_id, container_name=container_name)
+        log("✅ 状态更新为 running")
+        log("=" * 60)
+        log(f"🎉 模板创建完成！访问地址: http://<服务器IP>:{host_port}")
         
     except Exception as e:
         error_msg = str(e)
         log(f"❌ 创建容器异常: {error_msg}", "ERROR")
         log(traceback.format_exc(), "ERROR")
-        _update_agent_status(db, agent_id, "error", error=error_msg)
-        save_logs()
+        save_logs(error_msg=error_msg, status="error")
     finally:
         db.close()
         log("=" * 60)
@@ -982,3 +1012,37 @@ def get_config_logs(agent_id: str, db: Session = Depends(get_db)):
             "created_at": log.created_at.isoformat()
         } for log in logs]
     }
+
+
+@router.get("/ports/check")
+def check_port_available(port: int, db: Session = Depends(get_db)):
+    """检查端口是否可用"""
+    from docker_service import DockerService
+    docker = DockerService()
+    
+    # 检查数据库中的端口分配
+    port_alloc = db.query(PortAllocation).filter_by(port=port).first()
+    if port_alloc and port_alloc.is_allocated:
+        return {"available": False, "message": f"端口 {port} 已被占用"}
+    
+    # 检查 Docker 是否正在使用此端口
+    containers = docker.client.containers.list(all=True)
+    for c in containers:
+        attrs = c.attrs
+        ports = attrs.get('NetworkSettings', {}).get('Ports', {})
+        if ports:
+            for container_port, host_ips in ports.items():
+                if host_ips:
+                    if isinstance(host_ips, list):
+                        for host_ip_info in host_ips:
+                            public_port = host_ip_info.get('HostPort') if isinstance(host_ip_info, dict) else None
+                            if public_port and int(public_port) == port:
+                                return {"available": False, "message": f"端口 {port} 已被容器 {c.name} 占用"}
+                    elif isinstance(host_ips, dict):
+                        public_port = host_ips.get('HostPort')
+                        if public_port and int(public_port) == port:
+                            return {"available": False, "message": f"端口 {port} 已被容器 {c.name} 占用"}
+    
+    return {"available": True}
+
+
