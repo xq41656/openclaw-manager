@@ -73,13 +73,15 @@ async function loadTemplates() {
     }
 }
 
-async function startAgent(id) {
+async function startAgent(id, btn) {
+    if (btn) btn.disabled = true;
     await fetch(`${API_BASE}/api/agents/instances/${id}/start`, {method:'POST'});
     loadTemplates();
     loadProjects();
 }
 
-async function stopAgent(id) {
+async function stopAgent(id, btn) {
+    if (btn) btn.disabled = true;
     await fetch(`${API_BASE}/api/agents/instances/${id}/stop`, {method:'POST'});
     loadTemplates();
     loadProjects();

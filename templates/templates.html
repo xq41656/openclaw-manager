@@ -145,15 +145,19 @@
                     if (agent.status === 'running') html += '<button class="btn warning" onclick="showConfig(\'' + agent.id + '\')">⚙️ 配置</button>';
                     if (agent.status === 'running') {
                         html += '<div class="actions" style="justify-content:center;flex-wrap:wrap;gap:6px;">';
-                        html += '<button class="btn" id="startClawBtn-' + agent.id + '" onclick="startClaw(\'' + agent.id + '\')">▶️ 启动Claw</button>';
-                        html += '<button class="btn" id="stopClawBtn-' + agent.id + '" onclick="stopClaw(\'' + agent.id + '\')">⏹️ 停止Claw</button>';
-                        html += '</div><button class="btn" onclick="stopAgent(\'' + agent.id + '\')" style="margin-top:6px;">⏹️ 停止</button>';
+                        html += '<button class="btn" id="startClawBtn-' + agent.id + '" onclick="startClaw(\'' + agent.id + '\', this)">▶️ 启动Claw</button>';
+                        html += '<button class="btn" id="stopClawBtn-' + agent.id + '" onclick="stopClaw(\'' + agent.id + '\', this)">⏹️ 停止Claw</button>';
+                        html += '</div><button class="btn" onclick="stopAgent(\'' + agent.id + '\', this)" style="margin-top:6px;">⏹️ 停止</button>';
                     }
 
                     else if (agent.status === 'stopped' || agent.status === 'error') {
-                        html += '<button class="btn success" onclick="startAgent(\'' + agent.id + '\')">▶️ 启动容器</button>';
+                        html += '<button class="btn success" onclick="startAgent(\'' + agent.id + '\', this)" disabled>⏳ 启动中</button>';
                     }
                     else html += '<button class="btn" disabled>⏳ 等待中</button>';
+                    
+                    if (agent.status === 'creating') {
+                        html += '<button class="btn" disabled>⏳ 创建中</button>';
+                    }
                     html += '</div>';
                 } else {
                     html += '<div class="empty-state" style="padding:20px">该模板尚未创建实例</div>';
@@ -178,9 +182,9 @@
 
         async function stopAgent(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop', {method: 'POST'}); loadTemplates(); loadProjects(); }
 
-        async function startClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/start-claw', {method: 'POST'}); checkClawStateAndShowButtons(id, agentsData.find(a => a.id === id)?.container_id); alert('Claw 启动成功'); loadTemplates(); }
+        async function startClaw(id, btn) { if (btn) btn.disabled = true;  await fetch(API_BASE + '/api/agents/instances/' + id + '/start-claw', {method: 'POST'}); checkClawStateAndShowButtons(id, agentsData.find(a => a.id === id)?.container_id); ; loadTemplates(); }
 
-        async function stopClaw(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'}); checkClawStateAndShowButtons(id, agentsData.find(a => a.id === id)?.container_id); alert('Claw 已停止'); loadTemplates(); }
+        async function stopClaw(id, btn) { if (btn) btn.disabled = true;  await fetch(API_BASE + '/api/agents/instances/' + id + '/stop-claw', {method: 'POST'}); checkClawStateAndShowButtons(id, agentsData.find(a => a.id === id)?.container_id); ; loadTemplates(); }
 
         
         async function checkClawStatus(agentId, containerId) {
