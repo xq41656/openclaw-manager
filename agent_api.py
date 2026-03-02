@@ -611,8 +611,7 @@ def start_agent(agent_id: str, db: Session = Depends(get_db)):
             entity_type="agent",
             entity_id=agent_id,
             description=f"启动智能体: {agent.name}",
-            agent_id=agent_id,
-            extra_data={"entrypoint_result": entrypoint_result}
+            agent_id=agent_id
         )
         
         return {"success": True, "message": f"智能体 {agent.name} 已启动", "entrypoint": entrypoint_result}
