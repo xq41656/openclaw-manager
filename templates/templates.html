@@ -147,7 +147,6 @@
                         html += '<div class="actions" style="justify-content:center;flex-wrap:wrap;gap:6px;">';
                         html += '<button class="btn" id="startClawBtn-' + agent.id + '" onclick="startClaw(\'' + agent.id + '\')">▶️ 启动Claw</button>';
                         html += '<button class="btn" id="stopClawBtn-' + agent.id + '" onclick="stopClaw(\'' + agent.id + '\')">⏹️ 停止Claw</button>';
-                        html += '<button class="btn" onclick="resetConfig(\'' + agent.id + '\')">🔄 重置配置</button>';
                         html += '</div><button class="btn" onclick="stopAgent(\'' + agent.id + '\')" style="margin-top:6px;">⏹️ 停止</button>';
                     }
 
@@ -228,8 +227,6 @@
                 alert('❌ 停止失败: ' + e.message);
             }
         }
-        
-        async function resetConfig(id) { await fetch(API_BASE + '/api/agents/instances/' + id + '/reset-openclaw', {method: 'POST'}); alert('配置已重置'); loadTemplates(); }
         
         async function viewLogs(id) {
             currentLogAgentId = id;
