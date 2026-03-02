@@ -513,73 +513,25 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
         # ========== 步骤3: 启动 Gateway ==========
         log("---- 步骤3: 启动 Gateway ----")
         try:
-            # 启动 Gateway
             gateway_start_result = oc_service.docker.gateway_command(container_id, "start")
             log(f"Gateway 启动结果: {gateway_start_result}")
             
             if not gateway_start_result.get("success"):
                 log(f"⚠️ Gateway 启动失败: {gateway_start_result.get('output', gateway_start_result.get('error', '未知错误'))}", "WARNING")
             else:
-                log("✅ Gateway 已启动")
-            
-            # 等待 Gateway 初始化
-            log("等待 Gateway 初始化...")
-            time.sleep(5)
-            
-            # 停止 Gateway
-            log("步骤3.2: 停止 Gateway...")
-            gateway_stop_result = oc_service.docker.gateway_command(container_id, "stop")
-            log(f"Gateway 停止结果: {gateway_stop_result}")
-            
-            if not gateway_stop_result.get("success"):
-                log(f"⚠️ 停止 Gateway 失败: {gateway_stop_result.get('output', gateway_stop_result.get('error', '未知错误'))}", "WARNING")
-            else:
-                log("✅ Gateway 已停止")
-            
-            # 等待进程完全停止
-            time.sleep(2)
-            
-            # 替换配置文件
-            log("步骤3.3: 替换配置文件 openclaw.json...")
-            copy_result = oc_service.docker.copy_openclaw_config_to_container(container_id)
-            log(f"配置替换结果: {copy_result}")
-            
-            if not copy_result["success"]:
-                error_msg = copy_result.get("error", "未知错误")
-                log(f"❌ 配置文件替换失败: {error_msg}", "ERROR")
-                log("⚠️ 继续更新模板状态...")
-                _update_agent_status(db, agent_id, "running", container_id=container_id, container_name=container_name)
-                log("✅ 状态更新为 running")
-                log("=" * 60)
-                log(f"🎉 模板创建完成！访问地址: http://<服务器IP>:{host_port}")
-                save_logs()  # 保存日志供用户查看
-                return
-            
-            log("✅ 配置文件已替换")
-            
-            # 重启容器
-            log("步骤3.4: 重启容器...")
-            restart_result = docker_service.restart_container(container_id)
-            log(f"重启结果: {restart_result}")
-            
-            if not restart_result["success"]:
-                log(f"⚠️ 重启失败: {restart_result.get('error')}", "WARNING")
-            else:
-                log("✅ 容器已重启")
+                log("✅ Gateway 启动成功")
             
             time.sleep(3)
-            save_logs()  # 保存日志供用户查看
             
         except Exception as e:
             error_msg = str(e)
-            log(f"⚠️ 初始化 OpenClaw 过程出错: {error_msg}", "WARNING")
-            log("⚠️ 继续更新模板状态...")
+            log(f"⚠️ Gateway 启动过程出错: {error_msg}", "WARNING")
         
         # ========== 步骤4: 更新实例状态为 running ==========
         log("---- 步骤4: 更新实例状态 ----")
         _update_agent_status(db, agent_id, "running", container_id=container_id, container_name=container_name)
         log("✅ 状态更新为 running")
-        save_logs()  # 保存日志供用户查看
+        save_logs()
         log("=" * 60)
         log(f"🎉 模板创建完成！访问地址: http://<服务器IP>:{host_port}")
         
