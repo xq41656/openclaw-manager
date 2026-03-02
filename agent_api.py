@@ -509,6 +509,7 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
         container_id = result["container_id"]
         log(f"✅ 容器创建成功")
         log(f"容器ID: {container_id}")
+        save_logs()  # 保存日志供用户查看
         
         # ========== 步骤3: 启动 OpenClaw、替换配置、重启（不影响模板创建） ==========
         log("---- 步骤3: 初始化 OpenClaw（后台操作，不影响模板创建） ----")
@@ -555,6 +556,7 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
                 log("✅ 状态更新为 running")
                 log("=" * 60)
                 log(f"🎉 模板创建完成！访问地址: http://<服务器IP>:{host_port}")
+                save_logs()  # 保存日志供用户查看
                 return
             
             log("✅ 配置文件已替换")
@@ -570,7 +572,7 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
                 log("✅ 容器已重启")
             
             time.sleep(3)
-            save_logs()  # OpenClaw初始化过程中出错，记录日志供用户查看
+            save_logs()  # 保存日志供用户查看
             
         except Exception as e:
             error_msg = str(e)
@@ -581,6 +583,7 @@ def _create_container_task(agent_id: str, container_name: str, image: str, host_
         log("---- 步骤4: 更新实例状态 ----")
         _update_agent_status(db, agent_id, "running", container_id=container_id, container_name=container_name)
         log("✅ 状态更新为 running")
+        save_logs()  # 保存日志供用户查看
         log("=" * 60)
         log(f"🎉 模板创建完成！访问地址: http://<服务器IP>:{host_port}")
         
