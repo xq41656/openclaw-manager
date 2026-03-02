@@ -331,7 +331,10 @@ def delete_template(template_id: str, force: bool = False, db: Session = Depends
     for agent in template.instances:
         # 删除容器
         if agent.container_id:
-            docker_service.remove_container(agent.container_id, force=force)
+            remove_result = docker_service.remove_container(agent.container_id, force=force)
+            if not remove_result["success"] and not force:
+                # 如果非强制删除失败，则抛出异常
+                raise HTTPException(status_code=500, detail=f"删除容器失败: {remove_result.get('error', '未知错误')}")
         
         # 释放端口
         if agent.host_port:

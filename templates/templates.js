@@ -53,7 +53,9 @@ async function loadTemplates() {
         ${agent.status === 'running' && agent.host_port ? `<button class="action-btn primary" onclick="openUI('${agent.host_port}')">🌐 打开 UI</button>` : ''}
         ${agent.status === 'running' ? `<button class="action-btn warning" onclick="showConfig('${agent.id}')">⚙️ 配置</button>` : ''}
         ${agent.status === 'running' ? `<button class="action-btn" onclick="stopAgent('${agent.id}')">⏹️停</止</button>` : (agent.status === 'stopped' || agent.status === 'error') ? `<button class="action-btn success" onclick="startAgent('${agent.id}')">▶️启动</button>` : ``}
-        ${agent.status !== 'creating' && agent.container_id ? `<button class="action-btn" onclick="viewLogs('${agent.id}')">📄 日志</button>` : ''}
+        <div class="log-tabs" style="display:flex;gap:5px;margin-bottom:10px;">
+        ${agent.status !== 'creating' && agent.container_id ? `${agent.status === 'creating' ? '' : `<button class="action-btn" onclick="viewLogs('${agent.id}', 'combined')">📋 合并日志</button><button class="action-btn" onclick="viewLogs('${agent.id}', 'creation')">🔨 创建日志</button><button class="action-btn" onclick="viewLogs('${agent.id}', 'container')">📦 容器日志</button><button class="action-btn" onclick="viewLogs('${agent.id}', 'config')">⚙️ 配置日志</button>`}` : ''}
+        </div>
     </div>` : '<div class="empty-state" style="padding:20px">该模板尚未创建实例</div>'}
 </div>`;
         }).join('');
@@ -87,10 +89,23 @@ async function stopAgent(id, btn) {
     loadProjects();
 }
 
-async function viewLogs(id) {
+let currentLogType = 'combined'; // 默认日志类型
+
+async function viewLogs(id, logType = 'combined') {
     currentLogAgentId = id;
+    currentLogType = logType;
     document.getElementById('logs-modal').classList.add('active');
-    await loadCombinedLogs();
+    
+    // 根据日志类型加载相应内容
+    if (logType === 'combined') {
+        await loadCombinedLogs();
+    } else if (logType === 'creation') {
+        await loadCreationLogs();
+    } else if (logType === 'container') {
+        await loadContainerLogs();
+    } else if (logType === 'config') {
+        await loadConfigLogs();
+    }
 }
 
 async function loadCombinedLogs() {
@@ -167,6 +182,17 @@ async function loadConfigLogs() {
         }
     } catch(e) {
         document.getElementById('logs-content').textContent = '获取日志失败: ' + e.message;
+    }
+}
+
+async function loadContainerLogs() {
+    if (!currentLogAgentId) return;
+    document.getElementById('logs-content').textContent = '加载中...';
+    try {
+        const d = await fetch(`${API_BASE}/api/agents/instances/${currentLogAgentId}/logs?tail=100`).then(r => r.json());
+        document.getElementById('logs-content').textContent = d.logs || '暂无容器日志';
+    } catch(e) {
+        document.getElementById('logs-content').textContent = '获取容器日志失败: ' + e.message;
     }
 }
 
@@ -445,3 +471,20 @@ function checkPortAvailable(port) {
     return { valid: true };
 }
 
+// 添加缺失的函数
+function switchLogTab(tab) { 
+    if (tab === 'combined') loadCombinedLogs(); 
+    else if (tab === 'creation') loadCreationLogs(); 
+    else if (tab === 'container') loadContainerLogs();
+    else if (tab === 'config') loadConfigLogs(); 
+}
+
+async function loadProjects() { 
+    const p = await fetch(API_BASE + '/api/projects').then(r => r.json()); 
+    console.log('projects loaded:', p); 
+}
+
+document.addEventListener('DOMContentLoaded', function() { 
+    loadTemplates(); 
+    setInterval(loadTemplates, 30000); 
+});

@@ -140,7 +140,13 @@
                     if (agent.status === 'error' && agent.config && agent.config.error) {
                         html += '<div style="background:rgba(218,54,51,0.1);border-left:3px solid #da3633;padding:10px 15px;margin:10px 0;border-radius:4px;color:#f85149;font-size:12px;">❌ ' + agent.config.error + '</div>';
                     }
-                    html += '<div class="actions" style="justify-content:center"><button class="btn" onclick="viewLogs(\'' + agent.id + '\')">📄 日志</button>';
+                    html += '<div class="actions" style="justify-content:center">';
+                    html += '<div class="log-tabs" style="display:flex;gap:5px;margin-bottom:10px;">';
+                    html += '<button class="btn" onclick="viewLogs(\'' + agent.id + '\', \'combined\')">📋 合并日志</button>';
+                    html += '<button class="btn" onclick="viewLogs(\'' + agent.id + '\', \'creation\')">🔨 创建日志</button>';
+                    html += '<button class="btn" onclick="viewLogs(\'' + agent.id + '\', \'container\')">📦 容器日志</button>';
+                    html += '<button class="btn" onclick="viewLogs(\'' + agent.id + '\', \'config\')">⚙️ 配置日志</button>';
+                    html += '</div>';
                     if (agent.status === 'running' && agent.host_port) html += '<button class="btn primary" onclick="openUI(\'' + agent.host_port + '\')">🌐 打开 UI</button>';
                     if (agent.status === 'running') html += '<button class="btn warning" onclick="showConfig(\'' + agent.id + '\')">⚙️ 配置</button>';
                     if (agent.status === 'running') {
@@ -229,13 +235,31 @@
             }
         }
         
-        async function viewLogs(id) {
+        let currentLogType = 'combined'; // 默认日志类型
+        
+        async function viewLogs(id, logType = 'combined') {
             currentLogAgentId = id;
+            currentLogType = logType;
             document.getElementById('logs-modal').classList.add('active');
-            await loadCombinedLogs();
+            
+            // 根据日志类型加载相应内容
+            if (logType === 'combined') {
+                await loadCombinedLogs();
+            } else if (logType === 'creation') {
+                await loadCreationLogs();
+            } else if (logType === 'container') {
+                await loadContainerLogs();
+            } else if (logType === 'config') {
+                await loadConfigLogs();
+            }
         }
         
-        function switchLogTab(tab) { if (tab === 'combined') loadCombinedLogs(); else if (tab === 'creation') loadCreationLogs(); else if (tab === 'config') loadConfigLogs(); }
+        function switchLogTab(tab) { 
+            if (tab === 'combined') loadCombinedLogs(); 
+            else if (tab === 'creation') loadCreationLogs(); 
+            else if (tab === 'container') loadContainerLogs();
+            else if (tab === 'config') loadConfigLogs(); 
+        }
         
         async function loadCombinedLogs() {
             if (!currentLogAgentId) return;
@@ -260,6 +284,17 @@
             if (!currentLogAgentId) return;
             document.getElementById('logs-content').textContent = '加载中...';
             try { const d = await fetch(API_BASE + '/api/agents/instances/' + currentLogAgentId + '/config-logs').then(r => r.json()); if (d.logs && d.logs.length > 0) { const content = d.logs.map(log => { const time = new Date(log.created_at).toLocaleString('zh-CN'); let text = '[' + time + '] ' + log.description; if (log.old_value) text += '\n  旧配置: ' + JSON.stringify(log.old_value, null, 2); if (log.new_value) text += '\n  新配置: ' + JSON.stringify(log.new_value, null, 2); return text; }); document.getElementById('logs-content').textContent = content.join('\n\n==========\n\n'); } else { document.getElementById('logs-content').textContent = '暂无配置变更日志'; } } catch(e) { document.getElementById('logs-content').textContent = '获取日志失败: ' + e.message; }
+        }
+        
+        async function loadContainerLogs() {
+            if (!currentLogAgentId) return;
+            document.getElementById('logs-content').textContent = '加载中...';
+            try {
+                const d = await fetch(API_BASE + '/api/agents/instances/' + currentLogAgentId + '/logs?tail=100').then(r => r.json());
+                document.getElementById('logs-content').textContent = d.logs || '暂无容器日志';
+            } catch(e) {
+                document.getElementById('logs-content').textContent = '获取容器日志失败: ' + e.message;
+            }
         }
         
         async function showConfig(id) {

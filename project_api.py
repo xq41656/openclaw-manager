@@ -315,7 +315,10 @@ def delete_project(project_id: str, force: bool = False, db: Session = Depends(g
     
     for agent in agents:
         if agent.container_id:
-            docker.remove_container(agent.container_id, force=force)
+            remove_result = docker.remove_container(agent.container_id, force=force)
+            if not remove_result["success"] and not force:
+                # 如果非强制删除失败，则抛出异常
+                raise HTTPException(status_code=500, detail=f"删除容器失败: {remove_result.get('error', '未知错误')}")
         if agent.host_port:
             port_manager.release_port(agent.host_port)
         db.delete(agent)
