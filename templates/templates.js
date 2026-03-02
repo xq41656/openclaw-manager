@@ -52,7 +52,7 @@ async function loadTemplates() {
     <div class="actions" style="justify-content:center">
         ${agent.status === 'running' && agent.host_port ? `<button class="action-btn primary" onclick="openUI('${agent.host_port}')">🌐 打开 UI</button>` : ''}
         ${agent.status === 'running' ? `<button class="action-btn warning" onclick="showConfig('${agent.id}')">⚙️ 配置</button>` : ''}
-        ${agent.status === 'running' ? `<button class="action-btn" onclick="stopAgent('${agent.id}')">⏹️ 停止</button>` : (agent.status === 'stopped' || agent.status === 'error') ? `<button class="action-btn success" onclick="startAgent('${agent.id}')">▶️ 启动</button>` : `<button class="action-btn" disabled>⏳ 等待中</button>`}
+        ${agent.status === 'running' ? `<button class="action-btn" onclick="stopAgent('${agent.id}')">⏹️停</止</button>` : (agent.status === 'stopped' || agent.status === 'error') ? `<button class="action-btn success" onclick="startAgent('${agent.id}')">▶️启动</button>` : ``}
         ${agent.status !== 'creating' && agent.container_id ? `<button class="action-btn" onclick="viewLogs('${agent.id}')">📄 日志</button>` : ''}
     </div>` : '<div class="empty-state" style="padding:20px">该模板尚未创建实例</div>'}
 </div>`;
