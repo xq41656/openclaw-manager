@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from database import get_db, AgentInstance, Project, Template
 from docker_service import DockerService
 from config import settings
+import psutil
+import platform
 
 # 导入路由
 from agent_api import router as agent_router
@@ -125,6 +127,61 @@ async def get_local_images():
 
 
 # ============ 健康检查 ============
+
+@app.get("/api/system-info")
+async def get_system_info():
+    """获取系统信息（CPU、内存、磁盘）"""
+    try:
+        # CPU 信息
+        cpu_percent = psutil.cpu_percent(interval=1)
+        cpu_count = psutil.cpu_count()
+        
+        # 内存信息
+        memory = psutil.virtual_memory()
+        memory_total = round(memory.total / (1024**3), 2)  # GB
+        memory_available = round(memory.available / (1024**3), 2)  # GB
+        memory_used = round(memory.used / (1024**3), 2)  # GB
+        memory_percent = memory.percent
+        
+        # 磁盘信息
+        disk = psutil.disk_usage('/')
+        disk_total = round(disk.total / (1024**3), 2)  # GB
+        disk_used = round(disk.used / (1024**3), 2)  # GB
+        disk_free = round(disk.free / (1024**3), 2)  # GB
+        disk_percent = (disk.used / disk.total) * 100
+        
+        # 平台信息
+        system_info = {
+            "platform": platform.system(),
+            "platform_version": platform.version(),
+            "platform_release": platform.release(),
+            "architecture": platform.architecture()[0],
+            "hostname": platform.node(),
+            "processor": platform.processor(),
+        }
+        
+        return {
+            "cpu": {
+                "percent": cpu_percent,
+                "count": cpu_count
+            },
+            "memory": {
+                "total": memory_total,
+                "available": memory_available,
+                "used": memory_used,
+                "percent": memory_percent
+            },
+            "disk": {
+                "total": disk_total,
+                "used": disk_used,
+                "free": disk_free,
+                "percent": disk_percent
+            },
+            "system": system_info
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 
 @app.get("/api/health")
 async def health_check():

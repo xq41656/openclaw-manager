@@ -41,6 +41,34 @@
             if (!p || Object.keys(p).length === 0) return '-';
             return Object.entries(p).map(([k, v]) => Array.isArray(v) ? v.map(h => h.HostPort + ':' + k.split('/')[0]).join(',') : k + ' > ' + v).join(', ');
         }
+        
+        // 显示系统信息
+        async function loadSystemInfo() {
+            try {
+                const data = await fetch(API_BASE + '/api/system-info').then(r => r.json());
+                if (data.error) {
+                    return `<span style="color:#f85149;">获取系统信息失败: ${data.error}</span>`;
+                }
+                
+                return `
+                <div style="display:inline-block; margin-left:20px; font-size:12px;">
+                    <span title="CPU: ${data.cpu.percent}% (${data.cpu.count}核)">💻 CPU: ${data.cpu.percent}%</span>
+                    <span style="margin:0 10px;" title="内存: ${data.memory.used}/${data.memory.total}GB (${data.memory.percent}%)">🧠 内存: ${data.memory.percent}%</span>
+                    <span title="磁盘: ${data.disk.used}/${data.disk.total}GB (${data.disk.percent}%)">💾 磁盘: ${data.disk.percent}%</span>
+                </div>`;
+            } catch (e) {
+                return `<span style="color:#f85149;">获取系统信息失败: ${e.message}</span>`;
+            }
+        }
+        
+        // 刷新系统信息
+        async function refreshSystemInfo() {
+            const sysInfoElement = document.getElementById('system-info');
+            if (sysInfoElement) {
+                sysInfoElement.innerHTML = await loadSystemInfo();
+            }
+        }
+        
         async function loadContainers() {
             const el = document.getElementById('overview-content');
             el.innerHTML = '<div class="empty-state">加载中...</div>';
@@ -53,13 +81,14 @@
                     c.forEach(x => {
                         tbody += '<tr><td class="container-id" title="' + x.id + '">' + x.id + '</td><td>' + x.name + '</td><td class="image-tag">' + x.image + '</td><td><span class="status ' + getStatusClass(x.state) + '"><span class="status-dot"></span>' + getStatusText(x.state) + '</span></td><td>' + formatPorts(x.ports) + '</td></tr>';
                     });
-                    el.innerHTML = '<div class="section"><div class="section-header"><h2>📦 Docker 容器</h2><button class="btn" onclick="loadContainers()">🔄 刷新</button></div><table><thead><tr><th>ID</th><th>名称</th><th>镜像</th><th>状态</th><th>端口</th></tr></thead><tbody>' + tbody + '</tbody></table></div>';
+                    const sysInfoHtml = await loadSystemInfo();
+                    el.innerHTML = '<div class="section"><div class="section-header"><h2>📦 Docker 容器 <span id="system-info">' + sysInfoHtml + '</span></h2><button class="btn" onclick="loadContainers()">🔄 刷新</button></div><table><thead><tr><th>ID</th><th>名称</th><th>镜像</th><th>状态</th><th>端口</th></tr></thead><tbody>' + tbody + '</tbody></table></div>';
                 }
             } catch(e) {
                 el.innerHTML = '<div class="empty-state">加载失败: ' + e.message + '</div>';
             }
         }
-        document.addEventListener('DOMContentLoaded', function() { loadContainers(); setInterval(loadContainers, 30000); });
+        document.addEventListener('DOMContentLoaded', function() { loadContainers(); setInterval(loadContainers, 30000); setInterval(refreshSystemInfo, 5000); });
     </script>
 </body>
 </html>
